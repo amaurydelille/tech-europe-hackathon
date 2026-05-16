@@ -960,7 +960,7 @@ export function CourseViewA({ course }: { course: ParsedCourse }) {
 
       if (cur === "video" && dy > 12) {
         e.preventDefault();
-        changePhase("pivot");
+        changePhase("reading");
         touchStartY.current = e.touches[0].clientY;
         return;
       }
@@ -990,16 +990,18 @@ export function CourseViewA({ course }: { course: ParsedCourse }) {
     if (Date.now() - lastPhaseChange.current < 350) return;
     const cur = phaseRef.current;
     if (cur === "reading") return;
-    if (cur === "video" && e.deltaY > 0) { changePhase("pivot"); return; }
+    if (cur === "video" && e.deltaY > 0) { changePhase("reading"); return; }
     if (cur === "pivot" && e.deltaY > 0) { changePhase("reading"); return; }
     if (cur === "pivot" && e.deltaY < 0) { changePhase("video"); return; }
   }, [changePhase]);
 
   // Article scroll — track progress; reaching top snaps back to pivot
   const handleScroll = useCallback((e: UIEvent<HTMLDivElement>) => {
+    if (Date.now() - lastPhaseChange.current < 350) return;
     const el = e.currentTarget;
     const scrollTop = el.scrollTop;
     if (scrollTop === 0 && phaseRef.current === "reading") {
+      phaseRef.current = "pivot";
       setPhase("pivot");
     }
     const total = el.scrollHeight - el.clientHeight;
@@ -1095,10 +1097,12 @@ export function CourseViewA({ course }: { course: ParsedCourse }) {
       <div
         ref={articleRef}
         onScroll={handleScroll}
+        className="no-scrollbar"
         style={{
           flex: 1,
           overflowY: phase === "reading" ? "auto" : "hidden",
           overflowX: "hidden",
+          scrollbarWidth: "none",
           background: "var(--surface)",
           borderRadius: phase === "video" ? "24px 24px 0 0" : "0",
           marginTop: phase === "video" ? -16 : 0,
