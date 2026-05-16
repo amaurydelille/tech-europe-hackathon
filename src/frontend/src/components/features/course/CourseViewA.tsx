@@ -7,6 +7,7 @@ import {
   useEffect,
   type UIEvent,
 } from "react";
+import { flushSync } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { QRCodeSVG } from "qrcode.react";
@@ -1751,7 +1752,7 @@ export function CourseViewA({ course, courseId }: { course: ParsedCourse; course
 
     if (nextId) {
       navigatingRef.current = true;
-      setFeedDirection("down");
+      flushSync(() => setFeedDirection("down"));
       router.push(`/course/${encodeURIComponent(nextId)}`);
     } else {
       setShowEndCard(true);
@@ -1771,7 +1772,7 @@ export function CourseViewA({ course, courseId }: { course: ParsedCourse; course
     const nextId = all.find((id) => id !== courseId) ?? all[0] ?? null;
     if (nextId && nextId !== courseId) {
       navigatingRef.current = true;
-      setFeedDirection("down");
+      flushSync(() => setFeedDirection("down"));
       router.push(`/course/${encodeURIComponent(nextId)}`);
     } else {
       setShowEndCard(false);
@@ -1791,7 +1792,7 @@ export function CourseViewA({ course, courseId }: { course: ParsedCourse; course
     const idx = seen.indexOf(courseId);
     if (idx > 0) {
       navigatingRef.current = true;
-      setFeedDirection("up");
+      flushSync(() => setFeedDirection("up"));
       router.push(`/course/${encodeURIComponent(seen[idx - 1])}`);
     }
   }, [courseId, router, showEndCard]);
