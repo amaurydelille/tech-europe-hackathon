@@ -179,13 +179,7 @@ All tools print a single JSON line to stdout; non-zero exit means failure (error
 
 The `script.json` schema is fully specified in Step 7 below — that is the only schema you need.
 
-## Audio model
-
-The video has exactly **one audio source**: the Gradium narration from `gen_tts`. Video clips are generated silent (Seedance's `generate_audio` is forced off) and the stitcher overlays only the TTS lines onto a silent base.
-
-Implications for prompts:
-- Do not describe sound in video prompts ("the cracking of swords", "echoing footsteps"). It does nothing because audio is disabled, and "violent" sound cues are a common trigger for content-policy rejections.
-- Do not write narration lines that depend on sync to a non-existent sound effect ("listen to the legion roar"). The viewer hears only the narrator's voice and (otherwise) silence.
+- **Audio**: the only audio source is the Gradium narration; Seedance clips are silent. Do not describe sounds in video prompts (does nothing, can trigger content rejections) and do not write narration that references diegetic audio.
 
 ## Style guidance for visual prompts
 
