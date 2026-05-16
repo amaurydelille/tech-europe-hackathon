@@ -71,7 +71,7 @@ def apply_brainrot(
     out_path: Path,
     background_video: Path = SUBWAY_PATH,
     soundtrack_volume: float = 1.0 / 3.0,
-    top_ratio: float = 2.0 / 3.0,
+    top_ratio: float = 0.6,
     spin_duration: float = 0.6,
     spin_interval_mean: float = 3.0,
     spin_interval_std: float = 1.0,
@@ -118,13 +118,14 @@ def apply_brainrot(
         f"pad={rot_side}:{rot_side}:({rot_side}-iw)/2:({rot_side}-ih)/2:color=black@0,"
         f"format=rgba,"
         f"rotate=a='{rot_expr}':c=none:ow={rot_side}:oh={rot_side}[fg];"
-        # Subway slice: cover-crop into (width, bot_h).
-        f"[1:v]scale={width}:{bot_h}:force_original_aspect_ratio=increase,"
-        f"crop={width}:{bot_h},setsar=1,fps={FPS},format=yuv420p[sub];"
+        # Subway: scale to bot_h tall, preserve aspect (no crop), even width.
+        f"[1:v]scale=-2:{bot_h},setsar=1,fps={FPS},format=yuv420p[sub];"
         # Lesson centered in the top region; rotation overflow is clipped.
         f"[base][fg]overlay=({width}-{rot_side})/2:({top_h}-{rot_side})/2:format=auto[top];"
-        # Subway overlaid LAST at y=top_h so any spin overflow is covered.
-        f"[top][sub]overlay=0:{top_h}:format=auto[v]"
+        # Subway overlaid LAST, centered horizontally, sitting at y=top_h.
+        # The sides of the bottom region stay black — that's where lesson "bleed"
+        # during a spin is visible, behind/beside the subway strip.
+        f"[top][sub]overlay=(W-w)/2:{top_h}:format=auto[v]"
     )
 
     audio_filter = (
