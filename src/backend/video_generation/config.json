@@ -1,8 +1,9 @@
 {
   "voices": [
-    {"id": "YTpq7expH9539ERJ", "name": "default", "description": "neutral, clear delivery; good for medical, scientific, or modern explanatory lessons"},
-    {"id": "Z5GIOZR45ieZ8M-W", "name": "Patrick", "description": "smooth deep male voice; good for storytelling, history, biography, narrative-heavy lessons"},
-    {"id": "Ve1zknlflaRwcAQw", "name": "Aaron", "description": "composed and smooth British adult voice; perfect for technical and IT-related explanations"}
+    {"id": "YTpq7expH9539ERJ", "name": "default", "description": "neutral, clear delivery; good for medical, scientific, or modern explanatory lessons", "wps": 2.57},
+    {"id": "Z5GIOZR45ieZ8M-W", "name": "Patrick", "description": "smooth deep male voice; good for storytelling, history, biography, narrative-heavy lessons", "wps": 3.17},
+    {"id": "Ve1zknlflaRwcAQw", "name": "Aaron", "description": "composed and smooth British adult voice; perfect for technical and IT-related explanations", "wps": 3.03},
+    {"id": "fggSYM_FGJ30QTTl", "name": "Brianna", "description": "warm and smooth American young adult voice; ideal for music radio and educational content (good fit for fast-paced 'brainrot' style)", "wps": 2.58}
   ],
   "resolution": "480p",
   "aspect": "9:16",

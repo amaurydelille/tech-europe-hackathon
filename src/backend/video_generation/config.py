@@ -25,6 +25,9 @@ class Voice(BaseModel):
     id: str
     name: str
     description: str
+    # Measured words-per-second cadence at the configured padding_bonus.
+    # Use to plan line lengths (max words for a given target duration).
+    wps: float
 
 
 class Config(BaseModel):

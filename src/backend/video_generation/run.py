@@ -18,7 +18,10 @@ DEFAULT_CODEX_MODEL: str | None = None  # let codex use its config default
 def _render_voice_catalog() -> str:
     lines = []
     for v in config.voices:
-        lines.append(f"- **{v.name}** (`{v.id}`) — {v.description}")
+        lines.append(
+            f"- **{v.name}** (`{v.id}`) — {v.description}. "
+            f"Measured cadence: **{v.wps:.2f} words/s**."
+        )
     return "\n".join(lines)
 
 

@@ -77,7 +77,7 @@ Voice catalog:
 
 {{VOICE_CATALOG}}
 
-**Plan line length before you generate.** At the default TTS cadence (~2.5 words per second) a single narration line should target **≤ 6 seconds (~14–16 words)**. Split anything longer into two lines *up front*, lest we waste time.
+**Plan line length before you generate.** Use the cadence (`words/s`) of your chosen voice to budget line length: aim for **≤ 6 seconds of audio per line**, so the max word count is roughly `6 × wps`. Split anything longer into two lines *up front*, lest we waste time.
 
 For each narration line:
 
