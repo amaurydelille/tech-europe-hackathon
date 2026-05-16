@@ -146,7 +146,7 @@ export function CreateView({ onStart, loading, error }: CreateViewProps) {
       {/* title */}
       <div
         style={{
-          padding: "32px 28px 0",
+          padding: "76px 28px 0",
           position: "relative",
           zIndex: 2,
           textAlign: "center",
