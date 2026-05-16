@@ -230,7 +230,7 @@ The table below is the complete contract for every tool. **Do not read the tool 
 | `gen_image` | Generate a still (anchor or scene). Uses Seedream 4 (text-to-image when no `--ref`; edit when refs supplied). | `--prompt`, `--out`; optional `--ref` (repeatable), `--aspect` | `{path, width, height, model, seed}` |
 | `gen_video` | Generate a **silent** 5s or 10s clip from a reference image (real motion, image-to-video). Slow (1–3 min/call). Samples 2 fps frames for inspection. | `--prompt`, `--image`, `--duration` (5 or 10), `--out`; optional `--resolution` (480p/720p/1080p), `--aspect`, `--seed` | `{path, duration, frame_paths, model, seed}` |
 | `animate_image` | Turn a still into a short clip with a slow Ken-Burns-style zoom. Pure ffmpeg, ~1 second per call. **Prefer this over `gen_video` whenever you don't need true motion.** | `--image`, `--duration`, `--out`; optional `--zoom-from`, `--zoom-to`, `--resolution`, `--aspect` | `{path, duration}` |
-| `gen_tts` | Synthesize one narration line (text-to-speech). Also returns segment-level timestamps for subtitle rendering. | `--text`, `--voice-id`, `--out` | `{path, duration, sample_rate, timestamps: [{text, start, end}, ...]}` |
+| `gen_tts` | Synthesize one narration line (text-to-speech). Also returns segment-level timestamps for subtitle rendering. | `--text`, `--voice-id`, `--out`; optional `--brainrot-mode` (faster delivery) | `{path, duration, sample_rate, timestamps: [{text, start, end}, ...]}` |
 | `stitch` | Validate the script and mux all assets into the final MP4 with audio mix, burning subtitles from each speech entry's `timestamps`. | `--script`, `--out` | `{path, duration, subtitle_cues}` |
 
 All tools print a single JSON line to stdout; non-zero exit means failure (error on stderr).

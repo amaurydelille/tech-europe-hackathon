@@ -169,6 +169,34 @@ def test_gen_tts_raises_when_sdk_returns_no_timestamps(tmp_path: Path) -> None:
         )
 
 
+def test_gen_tts_brainrot_mode_lowers_padding_bonus(tmp_path: Path) -> None:
+    from backend.video_generation.config import config as cfg
+
+    wav = _make_wav_bytes(duration_s=1.0)
+    client = _FakeClient(wav)
+    out = tmp_path / "speech.wav"
+
+    gen_tts.gen_tts(
+        text="hi", out=out, voice_id="v",
+        brainrot_mode=True,
+        client_factory=lambda: client,
+    )
+
+    expected = cfg.tts_padding_bonus + gen_tts.BRAINROT_PADDING_DELTA
+    assert client.calls[0]["setup"]["json_config"]["padding_bonus"] == expected
+
+
+def test_gen_tts_default_padding_bonus_when_not_brainrot(tmp_path: Path) -> None:
+    from backend.video_generation.config import config as cfg
+
+    wav = _make_wav_bytes(duration_s=1.0)
+    client = _FakeClient(wav)
+    out = tmp_path / "speech.wav"
+
+    gen_tts.gen_tts(text="hi", out=out, voice_id="v", client_factory=lambda: client)
+    assert client.calls[0]["setup"]["json_config"]["padding_bonus"] == cfg.tts_padding_bonus
+
+
 def test_gen_tts_requires_voice_id(tmp_path: Path) -> None:
     wav = _make_wav_bytes(duration_s=1.0)
     client = _FakeClient(wav)

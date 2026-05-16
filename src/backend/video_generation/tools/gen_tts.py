@@ -21,6 +21,10 @@ _CONCURRENCY_ERROR_MARKER = "Concurrency limit exceeded"
 _CONCURRENCY_MAX_ATTEMPTS = 2
 _CONCURRENCY_BASE_DELAY_S = 1.5
 
+# Additional padding_bonus applied on top of config.tts_padding_bonus when
+# brainrot_mode is on. More negative => faster speech.
+BRAINROT_PADDING_DELTA = -0.5
+
 
 def _default_client_factory():
     import gradium
@@ -38,19 +42,19 @@ def _resolve_factory(spec: str | None) -> Callable:
     return getattr(module, attr)
 
 
-async def _synthesize(text: str, voice_id: str, client):
+async def _synthesize(text: str, voice_id: str, client, padding_bonus: float):
     return await client.tts(
         setup={
             "model_name": "default",
             "voice_id": voice_id,
             "output_format": "wav",
-            "json_config": {"padding_bonus": config.tts_padding_bonus},
+            "json_config": {"padding_bonus": padding_bonus},
         },
         text=text,
     )
 
 
-async def _synthesize_with_retry(text: str, voice_id: str, client):
+async def _synthesize_with_retry(text: str, voice_id: str, client, padding_bonus: float):
     """Call Gradium TTS, retrying only on the 3-session concurrency cap.
 
     Other errors propagate immediately — we don't want to mask a bad voice id
@@ -59,7 +63,7 @@ async def _synthesize_with_retry(text: str, voice_id: str, client):
     last_exc: Exception | None = None
     for attempt in range(_CONCURRENCY_MAX_ATTEMPTS):
         try:
-            return await _synthesize(text, voice_id, client)
+            return await _synthesize(text, voice_id, client, padding_bonus)
         except Exception as e:
             if _CONCURRENCY_ERROR_MARKER not in str(e):
                 raise
@@ -104,6 +108,7 @@ def gen_tts(
     out: Path,
     voice_id: str,
     *,
+    brainrot_mode: bool = False,
     client_factory: Callable | None = None,
 ) -> dict:
     if not text.strip():
@@ -112,9 +117,12 @@ def gen_tts(
         raise ValueError("voice_id is required (pick one from the prompt's voice catalog)")
     out = Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
+    padding_bonus = config.tts_padding_bonus
+    if brainrot_mode:
+        padding_bonus += BRAINROT_PADDING_DELTA
     factory = client_factory or _default_client_factory
     client = factory()
-    result = asyncio.run(_synthesize_with_retry(text, voice_id, client))
+    result = asyncio.run(_synthesize_with_retry(text, voice_id, client, padding_bonus))
     out.write_bytes(result.raw_data)
     duration = probe_duration(out)
     return {
@@ -130,6 +138,8 @@ def _main(argv: list[str] | None = None) -> int:
     parser.add_argument("--text", required=True)
     parser.add_argument("--voice-id", required=True,
                         help="Voice id from the prompt's voice catalog. No default.")
+    parser.add_argument("--brainrot-mode", action="store_true",
+                        help=f"Speed up delivery (adds {BRAINROT_PADDING_DELTA} to padding_bonus).")
     parser.add_argument("--out", required=True, type=Path)
     args = parser.parse_args(argv)
 
@@ -140,6 +150,7 @@ def _main(argv: list[str] | None = None) -> int:
         text=args.text,
         out=args.out,
         voice_id=args.voice_id,
+        brainrot_mode=args.brainrot_mode,
         client_factory=factory,
     )
     json.dump(result, sys.stdout)

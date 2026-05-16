@@ -25,7 +25,11 @@ MAX_CUE_CHARS = 36
 MAX_CUE_DURATION = 2.5  # seconds
 
 # Visual style.
+_FONT_DIR = Path(__file__).resolve().parents[1] / "assets" / "fonts"
+FRAUNCES_VF = _FONT_DIR / "Fraunces-VF.ttf"
+
 FONT_CANDIDATES = [
+    str(FRAUNCES_VF),
     "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
     "/System/Library/Fonts/Supplemental/Arial.ttf",
     "/System/Library/Fonts/Helvetica.ttc",
@@ -118,52 +122,83 @@ def _wrap_text(text: str, font: ImageFont.FreeTypeFont, max_width: int) -> list[
     return lines
 
 
+def _load_font(font_path: str | None, font_size: int) -> ImageFont.ImageFont:
+    """Load the subtitle font. If it's the bundled Fraunces variable font,
+    lock the weight axis to Bold (700) so it doesn't default to Black.
+    """
+    if not font_path:
+        return ImageFont.load_default()
+    font = ImageFont.truetype(font_path, font_size)
+    if font_path.endswith("Fraunces-VF.ttf"):
+        # Axes order in this VF: Optical Size, Weight, Softness, Wonky.
+        # opsz≈font_size matches the font's optical-size design grid.
+        opsz = max(9, min(font_size, 144))
+        try:
+            font.set_variation_by_axes([opsz, 700, 0, 0])
+        except Exception:
+            pass
+    return font
+
+
 def render_cue_png(cue: Cue, out_path: Path, video_w: int, video_h: int) -> tuple[int, int]:
     """Render one cue as a transparent RGBA PNG sized to fit the text.
+
+    The cartridge is sized to the *actual* rendered glyph bbox so the text is
+    visually centred — relying on font line metrics alone leaves an uneven gap
+    between glyph caps and the top of the box.
 
     Returns (png_width, png_height).
     """
     font_path = _find_font_path()
-    font_size = max(20, int(round(video_h * 0.04)))
-    font = (
-        ImageFont.truetype(font_path, font_size)
-        if font_path
-        else ImageFont.load_default()
-    )
+    font_size = max(24, int(round(video_h * 0.052)))
+    font = _load_font(font_path, font_size)
 
-    pad_x = max(12, font_size // 2)
-    pad_y = max(8, font_size // 3)
-    line_spacing = max(4, font_size // 4)
+    pad_x = max(16, int(font_size * 0.55))
+    pad_y = max(10, int(font_size * 0.32))
+    line_spacing = max(2, font_size // 6)
+    stroke = max(1, font_size // 14)
     max_text_width = max(100, video_w - 2 * pad_x - 40)
 
     lines = _wrap_text(cue.text, font, max_text_width)
-    line_metrics = [font.getbbox(line) for line in lines]
-    line_widths = [m[2] - m[0] for m in line_metrics]
-    line_height = font.getbbox("Mg")[3] - font.getbbox("Mg")[1]
+    line_widths = [font.getbbox(line)[2] - font.getbbox(line)[0] for line in lines]
 
-    box_w = max(line_widths) + 2 * pad_x
-    box_h = len(lines) * line_height + (len(lines) - 1) * line_spacing + 2 * pad_y
+    # 1) render text onto an oversized transparent canvas.
+    margin = stroke + max(font_size, 8)
+    canvas_w = max(line_widths) + 2 * margin
+    canvas_h = len(lines) * font_size + (len(lines) - 1) * line_spacing + 2 * margin
+    text_canvas = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
+    tdraw = ImageDraw.Draw(text_canvas)
+    y = margin
+    for line, w in zip(lines, line_widths):
+        x = (canvas_w - w) // 2
+        tdraw.text(
+            (x, y),
+            line,
+            font=font,
+            fill=(255, 255, 255, 255),
+            stroke_width=stroke,
+            stroke_fill=(0, 0, 0, 255),
+        )
+        y += font_size + line_spacing
 
+    # 2) crop to the actual ink so the cartridge wraps the glyphs evenly.
+    ink_bbox = text_canvas.getbbox()
+    if ink_bbox is None:
+        ink_bbox = (0, 0, canvas_w, canvas_h)
+    text_img = text_canvas.crop(ink_bbox)
+    text_w, text_h = text_img.size
+
+    # 3) build the cartridge with uniform padding around the cropped glyphs.
+    box_w = text_w + 2 * pad_x
+    box_h = text_h + 2 * pad_y
     img = Image.new("RGBA", (box_w, box_h), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
-    # Semi-transparent backdrop for readability.
     draw.rounded_rectangle(
         (0, 0, box_w - 1, box_h - 1),
         radius=max(6, font_size // 4),
         fill=(0, 0, 0, 160),
     )
-    y = pad_y
-    for line, w in zip(lines, line_widths):
-        x = (box_w - w) // 2
-        draw.text(
-            (x, y),
-            line,
-            font=font,
-            fill=(255, 255, 255, 255),
-            stroke_width=max(1, font_size // 14),
-            stroke_fill=(0, 0, 0, 255),
-        )
-        y += line_height + line_spacing
+    img.alpha_composite(text_img, (pad_x, pad_y))
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     img.save(out_path)
