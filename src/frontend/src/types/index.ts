@@ -34,6 +34,19 @@ export interface OnboardingProfile {
   content_style: string;
 }
 
+export interface Reference {
+  id: number;
+  title: string;
+  url: string;
+}
+
+export interface CourseOutput {
+  full_markdown: string;
+  condensed_markdown: string;
+  references: Reference[];
+  next_chapter: string;
+}
+
 export interface TranscriptEntry {
   kind: "user" | "assistant";
   text: string;

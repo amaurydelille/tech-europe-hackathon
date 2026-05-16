@@ -7,6 +7,7 @@ log = logging.getLogger(__name__)
 
 _LABELS = ["person", "event", "date", "location", "organization", "concept", "battle", "country"]
 _CHUNK_MAX_WORDS = 200
+_GLINER_MAX_CHARS = 1500  # only validate the first N chars — enough to judge relevance, avoids slow full-doc inference
 _MIN_ENTITIES = 3
 _TOP_K = 5
 
@@ -16,9 +17,9 @@ _model: GLiNER2 | None = None
 def _get_model() -> GLiNER2:
     global _model
     if _model is None:
-        log.info("Loading GLiNER2 model (first time only)...")
-        _model = GLiNER2.from_pretrained("fastino/gliner2-base-v1")
-        log.info("GLiNER2 model ready")
+        log.info("Loading GLiNER2 model on MPS...")
+        _model = GLiNER2.from_pretrained("fastino/gliner2-base-v1", device="mps")
+        log.info("GLiNER2 model ready (MPS)")
     return _model
 
 
@@ -62,7 +63,7 @@ def validate_with_gliner(
             log.debug("Skipping empty result: %s", result.title)
             continue
 
-        entity_count = _extract_entity_count(result.content)
+        entity_count = _extract_entity_count(result.content[:_GLINER_MAX_CHARS])
 
         if entity_count < _MIN_ENTITIES:
             log.debug("Rejected (only %d entities): %s", entity_count, result.title)
