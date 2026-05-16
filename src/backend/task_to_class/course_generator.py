@@ -63,10 +63,17 @@ _USER_TEMPLATE = """## Student Profile
 
 Using the source material above, generate TWO versions of the course adapted to the student's profile.
 
+### Source relevance (read before anything else):
+Before using any source, judge whether it is genuinely relevant to the course subject.
+A source is irrelevant if its content covers a completely different topic that only shares keywords — for example, a source about Docker software when the course is about shipping harbors, or a Wikipedia page about a band named after a historical figure when the course is about that figure's life.
+- DISCARD irrelevant sources entirely. Do not cite them or draw any content from them.
+- If a section of the course cannot be covered by the remaining relevant sources, write it from your own knowledge. It must still read as pure narrative — never signal that you are filling in from memory.
+
 ### Citation rules (critical):
 - Each source is numbered (Source 1, Source 2, ...).
 - Place an inline citation marker `[N]` immediately after every sentence or fact drawn from that source.
-- Every factual claim must have at least one `[N]`. A sentence can have multiple: `[1][3]`.
+- Only cite sources that are genuinely relevant to the subject.
+- A sentence can draw from multiple sources: `[1][3]`.
 - Apply citations in BOTH versions.
 - NEVER mention the sources in the text. No "according to", "source 1 says", "as noted in", or any meta-reference. The [N] markers are invisible to the reader — they are silent footnotes only.
 
@@ -85,6 +92,7 @@ Additional content rules:
 - Each chapter flows naturally into the next
 - Aim for at least 800 words total
 - You may add more than 3 chapters if the subject warrants it (keep the `## Chapter N: Title` format)
+- If the subject is scientific (mathematics, physics, AI, machine learning, chemistry, engineering, etc.), use LaTeX notation enclosed in `$$...$$` to express formulas and equations where it genuinely aids understanding. Do NOT use LaTeX for non-scientific topics.
 
 Wrap the entire output between these exact markers:
 `===FULL_COURSE_START===`
@@ -102,6 +110,7 @@ Strict structure — follow this schema exactly, replacing placeholders with rea
 Additional content rules:
 - Choose section titles freely — whatever best fits the content, no imposed labels
 - Every `##` section must be immediately followed by a `### Key Insight` with one sharp sentence
+- If the subject is scientific (mathematics, physics, AI, machine learning, chemistry, engineering, etc.), use LaTeX notation enclosed in `$$...$$` for formulas where it genuinely helps. Do NOT use LaTeX for non-scientific topics.
 - The Key Insight distills the single most important fact, date, or idea from the section above it
 - Each section must have 2-4 sentences of real substance before the Key Insight
 - Include causes, consequences, and nuance — not just surface facts
