@@ -35,3 +35,4 @@ class CourseOutput(BaseModel):
     full_markdown: str
     condensed_markdown: str
     references: list[Reference]
+    next_chapter: str

@@ -34,29 +34,19 @@ _FULL_COURSE_SCHEMA = """
 _CONDENSED_COURSE_SCHEMA = """
 # {{Course Title}}
 
-## Overview
-{{2-3 sentences summarising the subject and why it matters}}
+## {{Section title — freely chosen to fit the content}}
+{{2-4 sentences of substantive content for this section}}
 
-## Key Concepts
-- **{{Concept}}**: {{clear explanation with context}}
-- **{{Concept}}**: {{clear explanation with context}}
+### Key Insight
+{{One sharp sentence capturing the single most important fact, date, or idea from the section above}}
 
-## Key Figures
-- **{{Name}}**: {{who they were, what they did, why they matter}}
+## {{Next section title}}
+{{2-4 sentences}}
 
-## Key Dates
-- **{{Date}}**: {{what happened and its significance}}
+### Key Insight
+{{One sharp sentence}}
 
-## Causes & Context
-{{2-4 sentences on what led to this subject / historical background}}
-
-## Consequences & Legacy
-{{2-4 sentences on what changed as a result, long-term impact}}
-
-## Key Takeaways
-- {{Concise but substantive point}}
-- {{Concise but substantive point}}
-- {{Concise but substantive point}}
+{{...repeat for as many sections as needed to cover the subject thoroughly}}
 """.strip()
 
 _USER_TEMPLATE = """## Student Profile
@@ -109,13 +99,28 @@ Strict structure — follow this schema exactly, replacing placeholders with rea
 ```
 
 Additional content rules:
-- Each section must have real substance — minimum 2-3 sentences or 3 bullet points
+- Choose section titles freely — whatever best fits the content, no imposed labels
+- Every `##` section must be immediately followed by a `### Key Insight` with one sharp sentence
+- The Key Insight distills the single most important fact, date, or idea from the section above it
+- Each section must have 2-4 sentences of real substance before the Key Insight
 - Include causes, consequences, and nuance — not just surface facts
-- Aim for at least 400 words total
+- Aim for at least 400 words total (excluding Key Insights)
 
 Wrap the entire output between these exact markers:
 `===CONDENSED_COURSE_START===`
-`===CONDENSED_COURSE_END===`"""
+`===CONDENSED_COURSE_END===`
+
+---
+
+### NEXT CHAPTER
+Based on the current course, suggest the single most logical next course the student should take.
+- It must be a natural continuation — the next step in the learning journey
+- Return ONLY the course title, nothing else (no explanation, no punctuation at the end)
+- Examples: if the current course is "The life of Napoleon", a good next chapter would be "The Fall of Napoleon and the Congress of Vienna"
+
+Wrap it between these exact markers:
+`===NEXT_CHAPTER_START===`
+`===NEXT_CHAPTER_END===`"""
 
 
 def _format_sources(results: list[ValidatedResult]) -> str:
@@ -169,5 +174,6 @@ def generate_course(
     return CourseOutput(
         full_markdown=_extract_section(raw, "===FULL_COURSE_START===", "===FULL_COURSE_END==="),
         condensed_markdown=_extract_section(raw, "===CONDENSED_COURSE_START===", "===CONDENSED_COURSE_END==="),
+        next_chapter=_extract_section(raw, "===NEXT_CHAPTER_START===", "===NEXT_CHAPTER_END==="),
         references=references,
     )
