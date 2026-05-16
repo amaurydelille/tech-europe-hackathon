@@ -2,15 +2,18 @@
 
 The canvas is the lesson video's own dimensions. Layout:
 
-- **Top 2/3** holds the lesson video, cover-cropped to fill that region.
-- **Bottom 1/3** holds a slice of the looped Subway-Surfers clip,
-  cover-cropped to fill that region.
+- The Subway-Surfers clip is scaled to the canvas's **full width** with its
+  native aspect preserved and bottom-aligned to the bottom of the frame
+  (any overflow at the top is clipped off-canvas).
+- The lesson is drawn **on top** of the subway, inset by a few pixels and
+  framed with a 2 px black border, centered in the top ``top_ratio`` of the
+  canvas. The inset exposes the subway around the lesson, and during a spin
+  the lesson's rotation canvas is transparent — so subway shows through both
+  the inset margin and the corners that the rotated box no longer covers.
 
-A random schedule of "spins" rotates the lesson region by 360° over ~0.6 s.
+A random schedule of "spins" rotates the lesson box by 360° over ~0.6 s.
 Spin times are sampled as a sum of independent Normal(mean=3 s, std=1 s)
-intervals (with a 2 s floor between spins), seeded for reproducibility. The
-Subway slice is overlaid *last* so anything the lesson video does during a
-spin can never bleed into it.
+intervals (with a 2 s floor between spins), seeded for reproducibility.
 """
 from __future__ import annotations
 
@@ -72,6 +75,8 @@ def apply_brainrot(
     background_video: Path = SUBWAY_PATH,
     soundtrack_volume: float = 1.0 / 3.0,
     top_ratio: float = 0.6,
+    lesson_inset: int = 16,
+    lesson_border: int = 2,
     spin_duration: float = 0.6,
     spin_interval_mean: float = 3.0,
     spin_interval_std: float = 1.0,
@@ -90,6 +95,8 @@ def apply_brainrot(
         raise ValueError("top_ratio must be in [0.3, 0.9]")
     if not 0.0 <= soundtrack_volume <= 1.0:
         raise ValueError("soundtrack_volume must be in [0.0, 1.0]")
+    if lesson_inset < 0 or lesson_border < 0:
+        raise ValueError("lesson_inset and lesson_border must be non-negative")
 
     duration = probe_duration(foreground_video)
     width, height = _probe_dims(foreground_video)
@@ -101,31 +108,43 @@ def apply_brainrot(
     # Re-derive top_h so the two regions exactly sum to the canvas height.
     top_h = height - bot_h
 
+    # Lesson box (with border) sits inset inside the top region; inner video
+    # sits inside the border. Force all dims to even ints for yuv420p.
+    lesson_w = max(2, width - 2 * lesson_inset)
+    lesson_h = max(2, top_h - 2 * lesson_inset)
+    lesson_w -= lesson_w % 2
+    lesson_h -= lesson_h % 2
+    inner_w = max(2, lesson_w - 2 * lesson_border)
+    inner_h = max(2, lesson_h - 2 * lesson_border)
+    inner_w -= inner_w % 2
+    inner_h -= inner_h % 2
+
     rng = random.Random(seed) if seed is not None else random.Random()
     spin_times = _spin_times(duration, spin_interval_mean, spin_interval_std, rng)
     rot_expr = _rotate_expr(spin_times, spin_duration)
 
-    # Rotation canvas large enough that lesson corners survive a 360° spin.
-    rot_side = int(((width ** 2 + top_h ** 2) ** 0.5) + 4)
+    # Rotation canvas large enough that the bordered lesson box survives a 360° spin.
+    rot_side = int(((lesson_w ** 2 + lesson_h ** 2) ** 0.5) + 4)
     rot_side += rot_side % 2
 
     video_filter = (
         # Solid black base at canvas dims.
         f"color=c=black:s={width}x{height}:r={FPS}[base];"
-        # Lesson: cover-crop into (width, top_h), pad to rot_side square, rotate.
-        f"[0:v]scale={width}:{top_h}:force_original_aspect_ratio=increase,"
-        f"crop={width}:{top_h},setsar=1,fps={FPS},"
+        # Lesson: cover-crop into (inner_w, inner_h), pad with 2px black border to
+        # (lesson_w, lesson_h), then transparent-pad to rot_side square and rotate.
+        f"[0:v]scale={inner_w}:{inner_h}:force_original_aspect_ratio=increase,"
+        f"crop={inner_w}:{inner_h},setsar=1,fps={FPS},"
+        f"pad={lesson_w}:{lesson_h}:{lesson_border}:{lesson_border}:color=black,"
         f"pad={rot_side}:{rot_side}:({rot_side}-iw)/2:({rot_side}-ih)/2:color=black@0,"
         f"format=rgba,"
         f"rotate=a='{rot_expr}':c=none:ow={rot_side}:oh={rot_side}[fg];"
-        # Subway: scale to bot_h tall, preserve aspect (no crop), even width.
-        f"[1:v]scale=-2:{bot_h},setsar=1,fps={FPS},format=yuv420p[sub];"
-        # Lesson centered in the top region; rotation overflow is clipped.
-        f"[base][fg]overlay=({width}-{rot_side})/2:({top_h}-{rot_side})/2:format=auto[top];"
-        # Subway overlaid LAST, centered horizontally, sitting at y=top_h.
-        # The sides of the bottom region stay black — that's where lesson "bleed"
-        # during a spin is visible, behind/beside the subway strip.
-        f"[top][sub]overlay=(W-w)/2:{top_h}:format=auto[v]"
+        # Subway: full canvas width, native aspect preserved (no crop), even height.
+        f"[1:v]scale={width}:-2,setsar=1,fps={FPS},format=yuv420p[sub];"
+        # Z-order: black base ← subway (bottom-aligned, top spills off-canvas and
+        # is clipped) ← lesson rotation canvas centered in the top region. The
+        # inset around the lesson exposes the subway underneath.
+        f"[base][sub]overlay=0:H-h[bg];"
+        f"[bg][fg]overlay=({width}-{rot_side})/2:({top_h}-{rot_side})/2:format=auto[v]"
     )
 
     audio_filter = (
@@ -167,8 +186,12 @@ def _main(argv: list[str] | None = None) -> int:
     parser.add_argument("--soundtrack-volume", dest="soundtrack_volume", type=float,
                         default=1.0 / 3.0,
                         help="Linear gain for the bundled brainrot soundtrack (default 0.333).")
-    parser.add_argument("--top-ratio", dest="top_ratio", type=float, default=2.0 / 3.0,
+    parser.add_argument("--top-ratio", dest="top_ratio", type=float, default=0.6,
                         help="Fraction of canvas height for the lesson; subway gets the rest.")
+    parser.add_argument("--lesson-inset", dest="lesson_inset", type=int, default=16,
+                        help="Pixels of margin around the lesson box (subway shows through).")
+    parser.add_argument("--lesson-border", dest="lesson_border", type=int, default=2,
+                        help="Black border thickness around the lesson box, in pixels.")
     parser.add_argument("--spin-duration", dest="spin_duration", type=float, default=0.6)
     parser.add_argument("--spin-mean", dest="spin_mean", type=float, default=3.0)
     parser.add_argument("--spin-std", dest="spin_std", type=float, default=1.0)
@@ -181,6 +204,8 @@ def _main(argv: list[str] | None = None) -> int:
         background_video=args.background,
         soundtrack_volume=args.soundtrack_volume,
         top_ratio=args.top_ratio,
+        lesson_inset=args.lesson_inset,
+        lesson_border=args.lesson_border,
         spin_duration=args.spin_duration,
         spin_interval_mean=args.spin_mean,
         spin_interval_std=args.spin_std,
