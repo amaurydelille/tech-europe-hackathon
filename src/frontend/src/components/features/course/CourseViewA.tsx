@@ -1447,10 +1447,12 @@ function ArticleContent({ course, onCreateCourse }: { course: ParsedCourse; onCr
 function EndOfFeedCard({
   onCreate,
   onBack,
+  onReset,
   canGoBack,
 }: {
   onCreate: () => void;
   onBack: () => void;
+  onReset: () => void;
   canGoBack: boolean;
 }) {
   return (
@@ -1530,6 +1532,24 @@ function EndOfFeedCard({
         }}
       >
         Create a new video
+      </button>
+      <button
+        onClick={onReset}
+        style={{
+          height: 46,
+          padding: "0 22px",
+          minWidth: 200,
+          borderRadius: 23,
+          border: "1px solid rgba(255,255,255,0.28)",
+          background: "transparent",
+          color: "#FAF7F0",
+          fontFamily: "var(--f-body)",
+          fontWeight: 500,
+          fontSize: 14,
+          cursor: "pointer",
+        }}
+      >
+        Reset watched videos
       </button>
       {canGoBack && (
         <button
@@ -1732,6 +1752,31 @@ export function CourseViewA({ course, courseId }: { course: ParsedCourse; course
       router.push(`/course/${encodeURIComponent(nextId)}`);
     } else {
       setShowEndCard(true);
+    }
+  }, [courseId, router]);
+
+  const resetSeenVideos = useCallback(() => {
+    if (navigatingRef.current) return;
+    if (typeof window !== "undefined") {
+      try {
+        window.sessionStorage.removeItem(SEEN_VIDEOS_KEY);
+      } catch {
+        // storage unavailable
+      }
+    }
+    const all = allIdsRef.current;
+    const nextId = all.find((id) => id !== courseId) ?? all[0] ?? null;
+    if (nextId && nextId !== courseId) {
+      navigatingRef.current = true;
+      if (typeof window !== "undefined") {
+        window.sessionStorage.setItem(FEED_DIRECTION_KEY, "down");
+      }
+      router.push(`/course/${encodeURIComponent(nextId)}`);
+    } else {
+      setShowEndCard(false);
+      if (typeof window !== "undefined") {
+        window.location.reload();
+      }
     }
   }, [courseId, router]);
 
@@ -2017,6 +2062,7 @@ export function CourseViewA({ course, courseId }: { course: ParsedCourse; course
               <EndOfFeedCard
                 onCreate={() => router.push("/chat")}
                 onBack={goToPrevVideo}
+                onReset={resetSeenVideos}
                 canGoBack={seenIds.indexOf(courseId) > 0}
               />
             )}

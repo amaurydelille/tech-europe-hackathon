@@ -87,7 +87,7 @@ export function OnboardingFlow() {
 
   const handleNext = () => {
     if (isLast) {
-      router.push(ROUTES.CHAT);
+      router.push(`${ROUTES.COURSE}/61c983af-a9dc-49b9-9752-ab0ae3bd796d`);
     } else {
       go(index + 1);
     }
@@ -107,7 +107,7 @@ export function OnboardingFlow() {
       <div className="relative z-10 flex justify-end px-7 pt-6 h-10">
         {!isLast && (
           <button
-            onClick={() => router.push(ROUTES.CHAT)}
+            onClick={() => router.push(`${ROUTES.COURSE}/61c983af-a9dc-49b9-9752-ab0ae3bd796d`)}
             style={{ color: "var(--text-2)", fontSize: 14, fontWeight: 500, fontFamily: "var(--f-body)", background: "none", border: "none", cursor: "pointer" }}
           >
             Skip
