@@ -1,0 +1,11 @@
+{
+  "voice_id": "YTpq7expH9539ERJ",
+  "resolution": "480p",
+  "aspect": "9:16",
+  "target_duration_seconds": 60,
+  "models": {
+    "seedance": "bytedance/seedance-2.0/image-to-video",
+    "seedream_text_to_image": "fal-ai/bytedance/seedream/v4/text-to-image",
+    "seedream_edit": "fal-ai/bytedance/seedream/v4/edit"
+  }
+}

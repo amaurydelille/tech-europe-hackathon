@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 
@@ -10,14 +11,18 @@ load_dotenv()
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 TMP_ROOT = REPO_ROOT / "tmp" / "video_generation"
+CONFIG_PATH = Path(__file__).parent / "config.json"
 
-SEEDANCE_MODEL_ID = "bytedance/seedance-2.0/image-to-video"
-SEEDREAM_TEXT_TO_IMAGE_MODEL_ID = "fal-ai/bytedance/seedream/v4/text-to-image"
-SEEDREAM_EDIT_MODEL_ID = "fal-ai/bytedance/seedream/v4/edit"
+_config = json.loads(CONFIG_PATH.read_text())
 
-DEFAULT_VOICE_ID = "YTpq7expH9539ERJ"
-DEFAULT_RESOLUTION = "480p"
-DEFAULT_ASPECT = "9:16"
+DEFAULT_VOICE_ID: str = _config["voice_id"]
+DEFAULT_RESOLUTION: str = _config["resolution"]
+DEFAULT_ASPECT: str = _config["aspect"]
+DEFAULT_TARGET_DURATION_SECONDS: int = _config["target_duration_seconds"]
+
+SEEDANCE_MODEL_ID: str = _config["models"]["seedance"]
+SEEDREAM_TEXT_TO_IMAGE_MODEL_ID: str = _config["models"]["seedream_text_to_image"]
+SEEDREAM_EDIT_MODEL_ID: str = _config["models"]["seedream_edit"]
 
 
 def gradium_api_key() -> str:
