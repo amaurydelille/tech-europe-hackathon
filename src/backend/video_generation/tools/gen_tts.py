@@ -23,7 +23,7 @@ _CONCURRENCY_BASE_DELAY_S = 1.5
 
 # Additional padding_bonus applied on top of config.tts_padding_bonus when
 # brainrot_mode is on. More negative => faster speech.
-BRAINROT_PADDING_DELTA = -1.0
+BRAINROT_PADDING_DELTA = -3.5  # default -0.5 + this = -4.0 total (Gradium's max speed-up)
 
 
 def _default_client_factory():
