@@ -17,6 +17,7 @@ export async function GET() {
         // skip unreadable entries
       }
     }
+    ids.sort((a, b) => b.localeCompare(a));
     return NextResponse.json({ ids });
   } catch {
     return NextResponse.json({ ids: [] }, { status: 200 });

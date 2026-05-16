@@ -8,10 +8,10 @@ export default function FeedPage() {
   const mockDir = join(process.cwd(), "src/mock");
   const ids = readdirSync(mockDir, { withFileTypes: true })
     .filter((d) => d.isDirectory())
-    .map((d) => d.name);
+    .map((d) => d.name)
+    .sort((a, b) => b.localeCompare(a));
   if (ids.length === 0) {
     redirect("/onboarding");
   }
-  const id = ids[Math.floor(Math.random() * ids.length)];
-  redirect(`/course/${encodeURIComponent(id)}`);
+  redirect(`/course/${encodeURIComponent(ids[0])}`);
 }
