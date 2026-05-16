@@ -66,6 +66,7 @@ function parseSRT(raw: string): Cue[] {
 
 function VideoBlock({ courseId, isPlaying, progress, onTogglePlay, onSeek }: VideoBlockProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const hasInteractedRef = useRef(false);
   const cuesRef = useRef<Cue[]>([]);
   const seenSourceIndicesRef = useRef<Set<number>>(new Set());
   const resumeAfterPopupRef = useRef(false);
@@ -107,9 +108,14 @@ function VideoBlock({ courseId, isPlaying, progress, onTogglePlay, onSeek }: Vid
   useEffect(() => {
     const v = videoRef.current;
     if (!v) return;
-    v.muted = true; // Required by most browsers for reliable autoplay
-    if (isPlaying) v.play().catch(() => {});
-    else v.pause();
+    if (isPlaying) {
+      // Unmute on first explicit play interaction
+      if (hasInteractedRef.current) v.muted = false;
+      v.play().catch(() => {});
+    } else {
+      hasInteractedRef.current = true;
+      v.pause();
+    }
   }, [isPlaying]);
 
   // Feed real video time back as progress + update subtitle (rAF-coalesced)
@@ -175,7 +181,6 @@ function VideoBlock({ courseId, isPlaying, progress, onTogglePlay, onSeek }: Vid
         onLoadedMetadata={() => {
           const v = videoRef.current;
           if (!v) return;
-          v.muted = true;
           v.play().catch(() => {});
         }}
         playsInline
