@@ -1,15 +1,30 @@
+import { Fragment } from "react";
 import type { CSSProperties } from "react";
 
-type LogoKey = "openai" | "gradium" | "fal" | "tavily";
+type LogoKey = "openai" | "gradium" | "fal" | "tavily" | "pioneer";
 
 const LOGOS: Record<
   LogoKey,
-  { src?: string; alt: string; name: string; pillBg?: string }
+  {
+    src?: string;
+    alt: string;
+    name: string;
+    pillBg?: string;
+    displayWidth?: number;
+    displayHeight?: number;
+  }
 > = {
   openai: { src: "/logos/openai.svg", alt: "OpenAI", name: "OpenAI" },
   gradium: { src: "/logos/gradium.png", alt: "Gradium", name: "Gradium" },
   fal: { src: "/logos/fal.png", alt: "FAL", name: "FAL", pillBg: "#FFC4D8" },
   tavily: { src: "/logos/tavily.svg", alt: "Tavily", name: "Tavily" },
+  pioneer: {
+    src: "/logos/pioneer.svg",
+    alt: "Pioneer AI",
+    name: "Pioneer AI",
+    displayWidth: 80,
+    displayHeight: 20,
+  },
 };
 
 type Tool = {
@@ -74,8 +89,8 @@ const AGENTS: Agent[] = [
       {
         title: "Source Validator",
         sub: "Filters by relevance and entity coverage.",
-        provider: "fal",
-        providerNote: "FAL · GLiNER 2",
+        provider: "pioneer",
+        providerNote: "GLiNER 2",
       },
       {
         title: "Lesson Draft",
@@ -112,12 +127,12 @@ const AGENTS: Agent[] = [
       },
       {
         title: "gen_manim",
-        sub: "Animated math / CS diagrams.",
+        sub: "Math diagrams",
         providerNote: "Manim",
       },
       {
         title: "gen_map",
-        sub: "3D spinning globe with routes and pings.",
+        sub: "Generate 3D maps",
         providerNote: "Three.js",
       },
       {
@@ -129,9 +144,9 @@ const AGENTS: Agent[] = [
   },
 ];
 
-const SIDECAR_WIDTH = 110;
-const SIDECAR_HEIGHT = 88;
-const SIDECAR_GUTTER = 170;
+const SIDECAR_WIDTH = 96;
+const SIDECAR_HEIGHT = 84;
+const SIDECAR_GUTTER = 116;
 
 const shell: CSSProperties = {
   minHeight: "100dvh",
@@ -187,8 +202,8 @@ function ToolCard({ tool }: { tool: Tool }) {
             style={{
               position: "absolute",
               top: "50%",
-              right: -28,
-              width: 28,
+              right: -16,
+              width: 16,
               height: 1,
               background: "var(--border-strong)",
             }}
@@ -198,7 +213,7 @@ function ToolCard({ tool }: { tool: Tool }) {
             style={{
               position: "absolute",
               top: "50%",
-              left: "calc(100% + 28px)",
+              left: "calc(100% + 16px)",
               transform: "translateY(-50%)",
               display: "inline-flex",
               flexDirection: "column",
@@ -228,7 +243,11 @@ function ToolCard({ tool }: { tool: Tool }) {
                 <img
                   src={LOGOS[tool.provider].src}
                   alt={LOGOS[tool.provider].alt}
-                  style={{ width: 44, height: 44, objectFit: "contain" }}
+                  style={{
+                    width: LOGOS[tool.provider].displayWidth ?? 44,
+                    height: LOGOS[tool.provider].displayHeight ?? 44,
+                    objectFit: "contain",
+                  }}
                 />
               ) : (
                 <span
@@ -283,10 +302,10 @@ function AgentColumn({ agent }: { agent: Agent }) {
             borderRadius: 20,
             border: "1.5px solid var(--border-strong)",
             background: "var(--surface-2)",
-            padding: "18px 16px 16px",
+            padding: "12px 10px 10px",
             display: "flex",
             flexDirection: "column",
-            gap: 12,
+            gap: 8,
           }}
         >
           <div>
@@ -333,7 +352,7 @@ function AgentColumn({ agent }: { agent: Agent }) {
             </div>
           </div>
 
-          <div style={{ height: 1, background: "var(--border)", margin: "2px -16px 4px" }} />
+          <div style={{ height: 1, background: "var(--border)", margin: "2px -10px 2px" }} />
 
           <div
             style={{
@@ -357,10 +376,132 @@ function AgentColumn({ agent }: { agent: Agent }) {
   );
 }
 
+function UserIcon({ size }: { size: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.6}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <circle cx="12" cy="8" r="4" />
+      <path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8" />
+    </svg>
+  );
+}
+
+function VideoIcon({ size }: { size: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.5}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      {/* film strip: outer frame + sprocket gutters on left/right */}
+      <rect x="2" y="2" width="20" height="20" rx="2.5" />
+      <line x1="7" y1="2" x2="7" y2="22" />
+      <line x1="17" y1="2" x2="17" y2="22" />
+      <line x1="2" y1="12" x2="22" y2="12" />
+      <line x1="2" y1="7" x2="7" y2="7" />
+      <line x1="2" y1="17" x2="7" y2="17" />
+      <line x1="17" y1="7" x2="22" y2="7" />
+      <line x1="17" y1="17" x2="22" y2="17" />
+    </svg>
+  );
+}
+
+function ChevronRight({ size = 56 }: { size?: number }) {
+  return (
+    <div
+      aria-hidden
+      style={{
+        alignSelf: "center",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        color: "var(--text-3)",
+        flexShrink: 0,
+      }}
+    >
+      <svg
+        width={size}
+        height={size}
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={1.6}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M9 6l6 6-6 6" />
+      </svg>
+    </div>
+  );
+}
+
+function Bookend({
+  label,
+  icon,
+}: {
+  label: string;
+  icon: "user" | "video";
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 12,
+        minWidth: 120,
+        alignSelf: "center",
+      }}
+    >
+      <div
+        style={{
+          width: 120,
+          height: 120,
+          borderRadius: 999,
+          background: "#2a2520",
+          color: "#F8F4EC",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          boxShadow: "var(--shadow-md)",
+        }}
+      >
+        {icon === "user" ? <UserIcon size={64} /> : <VideoIcon size={64} />}
+      </div>
+      <div
+        style={{
+          fontFamily: "var(--f-head)",
+          fontSize: 32,
+          letterSpacing: "-0.01em",
+          color: "var(--text)",
+        }}
+      >
+        {label}
+      </div>
+    </div>
+  );
+}
+
 export default function PipelinePage() {
   return (
     <main style={shell}>
-      <div style={{ maxWidth: 1380, margin: "0 auto" }}>
+      <div style={{ maxWidth: 1500, margin: "0 auto" }}>
         <h1
           style={{
             margin: "0 0 6px",
@@ -386,13 +527,20 @@ export default function PipelinePage() {
         <section
           style={{
             display: "flex",
-            gap: 16,
-            alignItems: "flex-start",
+            gap: 4,
+            alignItems: "stretch",
           }}
         >
-          {AGENTS.map((agent) => (
-            <AgentColumn key={agent.title} agent={agent} />
+          <Bookend label="User" icon="user" />
+          <ChevronRight />
+          {AGENTS.map((agent, i) => (
+            <Fragment key={agent.title}>
+              <AgentColumn agent={agent} />
+              {i < AGENTS.length - 1 && <ChevronRight />}
+            </Fragment>
           ))}
+          <ChevronRight />
+          <Bookend label="Video" icon="video" />
         </section>
       </div>
     </main>
