@@ -48,6 +48,7 @@ function VideoBlock({ courseId, isPlaying, progress, onTogglePlay, onSeek }: Vid
   const videoRef = useRef<HTMLVideoElement>(null);
   const cuesRef = useRef<Cue[]>([]);
   const seenSourceIndicesRef = useRef<Set<number>>(new Set());
+  const resumeAfterPopupRef = useRef(false);
   const [subtitle, setSubtitle] = useState("");
   const [timedSources, setTimedSources] = useState<TimedSource[]>([]);
   const [activeSource, setActiveSource] = useState<TimedSource | null>(null);
@@ -106,14 +107,18 @@ function VideoBlock({ courseId, isPlaying, progress, onTogglePlay, onSeek }: Vid
       seenSourceIndicesRef.current.add(sourceIdx);
       setActiveSource(timedSources[sourceIdx]);
       setIsSourceOpen(false);
+      resumeAfterPopupRef.current = false;
     }
   }, [onSeek, timedSources]);
 
-  useEffect(() => {
-    if (!activeSource || isSourceOpen) return;
-    const t = window.setTimeout(() => setActiveSource(null), 8000);
-    return () => window.clearTimeout(t);
-  }, [activeSource, isSourceOpen]);
+  const closeSourcePopup = useCallback(() => {
+    setIsSourceOpen(false);
+    setActiveSource(null);
+    if (resumeAfterPopupRef.current) {
+      videoRef.current?.play().catch(() => {});
+    }
+    resumeAfterPopupRef.current = false;
+  }, []);
 
   return (
     <div
@@ -129,6 +134,7 @@ function VideoBlock({ courseId, isPlaying, progress, onTogglePlay, onSeek }: Vid
       <video
         ref={videoRef}
         src={`/api/course/${encodeURIComponent(courseId)}/video`}
+        autoPlay
         onTimeUpdate={handleTimeUpdate}
         onEnded={() => onSeek(1)}
         playsInline
@@ -184,29 +190,47 @@ function VideoBlock({ courseId, isPlaying, progress, onTogglePlay, onSeek }: Vid
           style={{
             position: "absolute",
             top: 72,
-            left: "50%",
-            transform: "translateX(-50%)",
+            right: 16,
             zIndex: 5,
             pointerEvents: "auto",
             display: "flex",
             flexDirection: "column",
-            alignItems: "center",
+            alignItems: "flex-end",
           }}
         >
           <button
-            onClick={() => setIsSourceOpen((v) => !v)}
-            style={{
-              border: "1px solid rgba(255,255,255,0.25)",
-              borderRadius: 999,
-              background: "rgba(12,12,12,0.8)",
-              color: "#fff",
-              fontSize: 12,
-              fontWeight: 600,
-              padding: "6px 10px",
-              cursor: "pointer",
+            onClick={() => {
+              if (isSourceOpen) {
+                closeSourcePopup();
+                return;
+              }
+              setIsSourceOpen(true);
+              const wasPlaying = !!videoRef.current && !videoRef.current.paused;
+              resumeAfterPopupRef.current = wasPlaying;
+              if (wasPlaying) videoRef.current?.pause();
             }}
+            style={{
+              border: "1px solid rgba(255,255,255,0.32)",
+              borderRadius: 999,
+              background: "rgba(20,20,20,0.72)",
+              color: "#fff",
+              fontSize: 13,
+              fontWeight: 600,
+              padding: "8px 12px",
+              cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+              backdropFilter: "blur(10px)",
+              boxShadow: "0 8px 22px rgba(0,0,0,0.32)",
+              letterSpacing: 0.2,
+            }}
+            aria-label="Show source"
           >
-            ! Sources
+            <svg viewBox="0 0 24 24" width={16} height={16} fill="none" aria-hidden>
+              <circle cx="11" cy="11" r="6.5" stroke="currentColor" strokeWidth="1.8" />
+              <path d="M16 16l4 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+            </svg>
           </button>
           {isSourceOpen && (
             <div
@@ -217,13 +241,31 @@ function VideoBlock({ courseId, isPlaying, progress, onTogglePlay, onSeek }: Vid
                 borderRadius: 12,
                 background: "rgba(12,12,12,0.9)",
                 border: "1px solid rgba(255,255,255,0.18)",
-                backdropFilter: "blur(8px)",
-                color: "#fff",
-              }}
-            >
-              <div style={{ fontSize: 13, lineHeight: 1.35, marginBottom: 6 }}>
-                {activeSource.name}
-              </div>
+                  backdropFilter: "blur(8px)",
+                  color: "#fff",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
+                  <div style={{ fontSize: 11, letterSpacing: 0.4, opacity: 0.75, textTransform: "uppercase" }}>Source</div>
+                  <button
+                    onClick={closeSourcePopup}
+                    aria-label="Close source popup"
+                    style={{
+                      border: "none",
+                      background: "transparent",
+                      color: "rgba(255,255,255,0.82)",
+                      cursor: "pointer",
+                      fontSize: 16,
+                      lineHeight: 1,
+                      padding: 0,
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
+                <div style={{ fontSize: 13, lineHeight: 1.35, marginBottom: 6 }}>
+                  {activeSource.name}
+                </div>
               <a
                 href={activeSource.url}
                 target="_blank"
@@ -1020,71 +1062,56 @@ function ArticleContent({ course }: { course: ParsedCourse }) {
   );
 }
 
-// phase "video"  → video visible, article locked
-// phase "pivot"  → video gone, article at top but still locked — decision point
-// phase "reading" → article freely scrollable
-type Phase = "video" | "pivot" | "reading";
+type View = "video" | "reading";
 
 // ── Main component ────────────────────────────────────────────────────
 export function CourseViewA({ course, courseId }: { course: ParsedCourse; courseId: string }) {
-  const [isPlaying, setIsPlaying] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(true);
   const [progress, setProgress] = useState(0);
-  const [phase, setPhase] = useState<Phase>("video");
+  const [view, setView] = useState<View>("video");
   const [showShare, setShowShare] = useState(false);
   const [readProgress, setReadProgress] = useState(0);
   const articleRef = useRef<HTMLDivElement>(null);
   const outerRef = useRef<HTMLDivElement>(null);
-  const phaseRef = useRef<Phase>("video");
+  const viewRef = useRef<View>("video");
+  const touchStartX = useRef(0);
   const touchStartY = useRef(0);
-  const lastPhaseChange = useRef(0); // ms timestamp — absorbs inertia bleed
+  const didSwipe = useRef(false);
   const router = useRouter();
 
-  // keep ref in sync so non-React event listeners always read current phase
-  useEffect(() => { phaseRef.current = phase; }, [phase]);
+  useEffect(() => { viewRef.current = view; }, [view]);
 
-  // Central transition — records timestamp so inertia events are ignored for 350 ms
-  const changePhase = useCallback((next: Phase) => {
-    lastPhaseChange.current = Date.now();
-    phaseRef.current = next;
-    if (next === "reading" && articleRef.current) {
-      articleRef.current.style.overflowY = "auto";
-    }
-    setPhase(next);
-  }, []);
-
-  // Non-passive touch handler — manages all three phases
+  // Horizontal touch navigation:
+  // - swipe left on video => open reading panel
+  // - swipe right on reading => return to video
   useEffect(() => {
     const el = outerRef.current;
     if (!el) return;
 
     function onTouchStart(e: TouchEvent) {
+      didSwipe.current = false;
+      touchStartX.current = e.touches[0].clientX;
       touchStartY.current = e.touches[0].clientY;
     }
 
     function onTouchMove(e: TouchEvent) {
-      if (Date.now() - lastPhaseChange.current < 350) { e.preventDefault(); return; }
+      if (didSwipe.current) return;
+      const dx = e.touches[0].clientX - touchStartX.current;
+      const dy = e.touches[0].clientY - touchStartY.current;
+      const isHorizontal = Math.abs(dx) > Math.abs(dy) + 8;
+      if (!isHorizontal || Math.abs(dx) < 36) return;
 
-      const dy = touchStartY.current - e.touches[0].clientY;
-      const cur = phaseRef.current;
-
-      if (cur === "reading") return;
-
-      if (cur === "video" && dy > 12) {
+      const cur = viewRef.current;
+      if (cur === "video" && dx < 0) {
         e.preventDefault();
-        changePhase("reading");
-        touchStartY.current = e.touches[0].clientY;
+        didSwipe.current = true;
+        setView("reading");
         return;
       }
-
-      if (cur === "pivot") {
-        if (dy > 12) {
-          changePhase("reading");
-          touchStartY.current = e.touches[0].clientY;
-        } else if (dy < -12) {
-          e.preventDefault();
-          changePhase("video");
-          touchStartY.current = e.touches[0].clientY;
-        }
+      if (cur === "reading" && dx > 0) {
+        e.preventDefault();
+        didSwipe.current = true;
+        setView("video");
       }
     }
 
@@ -1094,37 +1121,14 @@ export function CourseViewA({ course, courseId }: { course: ParsedCourse; course
       el.removeEventListener("touchstart", onTouchStart);
       el.removeEventListener("touchmove", onTouchMove);
     };
-  }, [changePhase]);
+  }, []);
 
-  // Wheel (desktop) — same three-phase logic + inertia guard
-  const handleWheel = useCallback((e: React.WheelEvent) => {
-    if (Date.now() - lastPhaseChange.current < 350) return;
-    const cur = phaseRef.current;
-
-    // When already at the top of the article, an upward wheel gesture should
-    // always reopen the video, even if we didn't settle into "pivot" yet.
-    if (cur === "reading") {
-      if (e.deltaY < 0 && (articleRef.current?.scrollTop ?? 0) <= 1) {
-        changePhase("video");
-      }
-      return;
-    }
-
-    if (cur === "video" && e.deltaY > 0) { changePhase("reading"); return; }
-    if (cur === "pivot" && e.deltaY > 0) { changePhase("reading"); return; }
-    if (cur === "pivot" && e.deltaY < 0) { changePhase("video"); return; }
-  }, [changePhase]);
-
-  // Article scroll — track progress; reaching top snaps back to pivot
+  // Article scroll — track reading progress
   const handleScroll = useCallback((e: UIEvent<HTMLDivElement>) => {
-    if (Date.now() - lastPhaseChange.current < 350) return;
     const el = e.currentTarget;
     const scrollTop = el.scrollTop;
-    if (scrollTop <= 1 && phaseRef.current === "reading") {
-      phaseRef.current = "pivot";
-      setPhase("pivot");
-    }
     const total = el.scrollHeight - el.clientHeight;
+    if (scrollTop <= 1) setReadProgress(0);
     if (total > 0) setReadProgress(scrollTop / total);
   }, []);
 
@@ -1134,12 +1138,9 @@ export function CourseViewA({ course, courseId }: { course: ParsedCourse; course
   return (
     <div
       ref={outerRef}
-      onWheel={handleWheel}
       style={{
         height: "100dvh",
         overflow: "hidden",
-        display: "flex",
-        flexDirection: "column",
         background: "var(--bg)",
         position: "relative",
       }}
@@ -1196,46 +1197,86 @@ export function CourseViewA({ course, courseId }: { course: ParsedCourse; course
         </PillBtn>
       </div>
 
-      {/* ── Video section — collapses when leaving video phase */}
+      {/* ── Horizontal view track */}
       <div
         style={{
-          height: phase === "video" ? "82%" : 0,
-          overflow: "hidden",
-          flexShrink: 0,
-          transition: "height 0.42s cubic-bezier(0.4,0,0.2,1)",
+          height: "100%",
+          width: "200%",
+          display: "flex",
+          transform: view === "video" ? "translateX(0)" : "translateX(-50%)",
+          transition: "transform 0.38s cubic-bezier(0.4,0,0.2,1)",
         }}
       >
-        <VideoBlock
-          courseId={courseId}
-          isPlaying={isPlaying}
-          progress={progress}
-          onTogglePlay={togglePlay}
-          onSeek={seek} // also called by video's onTimeUpdate
-        />
+        {/* Fullscreen video panel (first) */}
+        <div style={{ width: "50%", height: "100%" }}>
+          <VideoBlock
+            courseId={courseId}
+            isPlaying={isPlaying}
+            progress={progress}
+            onTogglePlay={togglePlay}
+            onSeek={seek}
+          />
+        </div>
+
+        {/* Reading panel (second) */}
+        <div
+          ref={articleRef}
+          onScroll={handleScroll}
+          className="no-scrollbar"
+          style={{
+            width: "50%",
+            height: "100%",
+            overflowY: "auto",
+            overflowX: "hidden",
+            scrollbarWidth: "none",
+            background: "var(--surface)",
+            paddingTop: 58,
+            boxShadow: "0 -8px 24px rgba(0,0,0,0.05)",
+            WebkitOverflowScrolling: "touch" as React.CSSProperties["WebkitOverflowScrolling"],
+          }}
+        >
+          <ArticleContent course={course} />
+        </div>
       </div>
 
-      {/* ── Scrollable article */}
       <div
-        ref={articleRef}
-        onScroll={handleScroll}
-        className="no-scrollbar"
         style={{
-          flex: 1,
-          overflowY: phase === "reading" ? "auto" : "hidden",
-          overflowX: "hidden",
-          scrollbarWidth: "none",
-          background: "var(--surface)",
-          borderRadius: phase === "video" ? "24px 24px 0 0" : "0",
-          marginTop: phase === "video" ? -16 : 0,
-          position: "relative",
-          zIndex: 5,
-          boxShadow: "0 -8px 24px rgba(0,0,0,0.05)",
-          paddingTop: phase !== "video" ? 58 : 0,
-          transition: "border-radius 0.42s cubic-bezier(0.4,0,0.2,1), padding-top 0.42s cubic-bezier(0.4,0,0.2,1)",
-          WebkitOverflowScrolling: "touch" as React.CSSProperties["WebkitOverflowScrolling"],
+          position: "absolute",
+          left: "50%",
+          bottom: 22,
+          transform: "translateX(-50%)",
+          zIndex: 35,
+          display: "flex",
+          gap: 8,
+          alignItems: "center",
         }}
       >
-        <ArticleContent course={course} />
+        <button
+          onClick={() => setView("video")}
+          aria-label="Show video panel"
+          style={{
+            width: 8,
+            height: 8,
+            borderRadius: "50%",
+            border: "none",
+            padding: 0,
+            cursor: "pointer",
+            background: view === "video" ? "#FFFFFF" : "rgba(255,255,255,0.45)",
+          }}
+        />
+        <button
+          onClick={() => setView("reading")}
+          aria-label="Show text panel"
+          style={{
+            width: 8,
+            height: 8,
+            borderRadius: "50%",
+            border: "none",
+            padding: 0,
+            cursor: "pointer",
+            background: view === "reading" ? "#FFFFFF" : "rgba(255,255,255,0.45)",
+          }}
+        />
       </div>
 
       {/* ── Share modal */}
