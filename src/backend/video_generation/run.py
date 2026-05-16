@@ -98,23 +98,25 @@ def _codex_command(workspace: Workspace, model: str | None) -> list[str]:
 
 def generate_video(
     lesson_md: str,
-    out_path: Path | None = None,
+    out_dir: Path | None = None,
     *,
     target_duration_seconds: int = config.target_duration_seconds,
     model: str | None = DEFAULT_CODEX_MODEL,
     extra_env: dict | None = None,
 ) -> Path:
-    """Turn a lesson markdown into a narrated video MP4.
+    """Turn a lesson markdown into a narrated video + subtitle pair.
 
     Args:
         lesson_md: Lesson content as a markdown string.
-        out_path: Where to copy the final MP4. If None, leave it under the workspace.
+        out_dir: Where to copy the finished `final.mp4` + `final.srt`. The
+            directory is created if missing. If None, leave them under the
+            workspace.
         target_duration_seconds: Target length of the finished video in seconds.
         model: Optional codex model override (e.g. "gpt-5-codex").
         extra_env: Extra env vars to pass to codex.
 
     Returns:
-        Path to the final MP4.
+        Path to the directory containing `final.mp4` and `final.srt`.
     """
     if shutil.which("codex") is None:
         raise RuntimeError("`codex` CLI not found on PATH")
@@ -151,13 +153,13 @@ def generate_video(
             f"See {workspace.root / 'codex.last_message.txt'} for the agent's last message."
         )
 
-    if out_path is not None:
-        out_path = Path(out_path)
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(produced, out_path)
-        shutil.copy2(produced_srt, out_path.with_suffix(".srt"))
-        return out_path
-    return produced
+    if out_dir is not None:
+        out_dir = Path(out_dir)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(produced, out_dir / "final.mp4")
+        shutil.copy2(produced_srt, out_dir / "final.srt")
+        return out_dir
+    return workspace.outputs_dir
 
 
 def _main(argv: list[str] | None = None) -> int:
@@ -170,10 +172,10 @@ def _main(argv: list[str] | None = None) -> int:
         help="Path to the lesson markdown file.",
     )
     parser.add_argument(
-        "--out",
+        "--out-dir",
         type=Path,
         default=None,
-        help="Optional destination path for the final MP4.",
+        help="Optional destination directory. Will contain final.mp4 + final.srt.",
     )
     parser.add_argument(
         "--model",
@@ -193,13 +195,13 @@ def _main(argv: list[str] | None = None) -> int:
         print(f"lesson file not found: {args.lesson}", file=sys.stderr)
         return 1
 
-    final = generate_video(
+    final_dir = generate_video(
         lesson_md=args.lesson.read_text(),
-        out_path=args.out,
+        out_dir=args.out_dir,
         target_duration_seconds=args.duration,
         model=args.model,
     )
-    print(str(final))
+    print(str(final_dir))
     return 0
 
 
