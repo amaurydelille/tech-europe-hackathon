@@ -1,0 +1,402 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  html, body { margin: 0; padding: 0; background: #000; overflow: hidden; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.158.0/build/three.module.js"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+// Match the Python build_texture desaturation factor so country highlights
+// and 3D overlays share the same palette tone.
+const SATURATION_FACTOR = 0.65;
+function desatColor(hex) {
+  const c = new THREE.Color(hex);
+  const hsl = { h: 0, s: 0, l: 0 };
+  c.getHSL(hsl);
+  c.setHSL(hsl.h, hsl.s * SATURATION_FACTOR, hsl.l);
+  return c;
+}
+
+// ---- URL-driven parameters ---------------------------------------------
+const params = new URLSearchParams(window.location.search);
+const cameraLon = parseFloat(params.get('lon') ?? -78);
+const cameraLat = parseFloat(params.get('lat') ?? 22);
+const zoom      = parseFloat(params.get('zoom') ?? 4.2);
+const W         = parseInt(params.get('w') ?? 1080);
+const H         = parseInt(params.get('h') ?? 1080);
+
+// Animation params
+const spinSpeed = parseFloat(params.get('spin') ?? 0);   // deg / second
+const totalDur  = parseFloat(params.get('dur') ?? 5);    // seconds
+
+// Optional arrow params (great-circle bezier).
+const arrowFromLat = params.get('arrowFromLat');
+const arrowFromLon = params.get('arrowFromLon');
+const arrowToLat   = params.get('arrowToLat');
+const arrowToLon   = params.get('arrowToLon');
+const arrowColor   = params.get('arrowColor') ?? '#ffaa44';
+const hasArrow = arrowFromLat !== null && arrowFromLon !== null
+              && arrowToLat   !== null && arrowToLon   !== null;
+
+// Optional blink: a single smooth fade-in/fade-out around a peak time.
+const hasBlink   = params.get('blink') === '1';
+const blinkTime  = parseFloat(params.get('blinkTime') ?? -1);     // seconds; <0 → midclip
+const BLINK_FADE_IN  = 0.30;
+const BLINK_HOLD     = 0.50;
+const BLINK_FADE_OUT = 0.40;
+
+// Optional city/point markers: JSON list of {lat, lon, color, t_on, t_off?}.
+let markers = [];
+try {
+  const raw = params.get('markers');
+  if (raw) markers = JSON.parse(raw);
+} catch (e) { console.error('markers parse error', e); }
+
+// ---- Renderer / scene / camera -----------------------------------------
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setSize(W, H, true);
+renderer.setPixelRatio(2);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x000000);
+
+const camera = new THREE.PerspectiveCamera(28, W / H, 0.1, 100);
+{
+  const lonRad = THREE.MathUtils.degToRad(cameraLon + 90);
+  const latRad = THREE.MathUtils.degToRad(cameraLat);
+  camera.position.set(
+    zoom * Math.cos(latRad) * Math.sin(lonRad),
+    zoom * Math.sin(latRad),
+    zoom * Math.cos(latRad) * Math.cos(lonRad),
+  );
+  camera.lookAt(0, 0, 0);
+}
+
+// ---- World group (sphere + overlays spin together) ---------------------
+const world = new THREE.Group();
+scene.add(world);
+
+// ---- Earth -------------------------------------------------------------
+const SUN_DIR = new THREE.Vector3(2.5, 1.5, 2.5).normalize();
+const loader = new THREE.TextureLoader();
+let colorLoaded = false, roughLoaded = false, normalLoaded = false;
+const earthTex = loader.load('earth_texture.png', () => {
+  earthTex.colorSpace = THREE.SRGBColorSpace; earthTex.anisotropy = 16; colorLoaded = true;
+});
+let blinkLoaded = !hasBlink;
+let blinkTex = null;
+if (hasBlink) {
+  blinkTex = loader.load('earth_texture_blink.png', () => {
+    blinkTex.colorSpace = THREE.SRGBColorSpace;
+    blinkTex.anisotropy = 16;
+    blinkLoaded = true;
+  });
+}
+const roughTex = loader.load('earth_roughness.png', () => {
+  roughTex.colorSpace = THREE.NoColorSpace; roughTex.anisotropy = 16; roughLoaded = true;
+});
+const normalTex = loader.load('earth_normal.jpg', () => {
+  normalTex.colorSpace = THREE.NoColorSpace; normalTex.anisotropy = 16; normalLoaded = true;
+});
+
+const earth = new THREE.Mesh(
+  new THREE.SphereGeometry(1, 256, 256),
+  new THREE.MeshStandardMaterial({
+    map: earthTex,
+    roughnessMap: roughTex,
+    roughness: 1.0,
+    metalness: 0.05,
+    normalMap: normalTex,
+    normalScale: new THREE.Vector2(0.9, 0.9),
+    emissive: new THREE.Color(0x0d0d0d),
+    emissiveIntensity: 0.45,
+  })
+);
+world.add(earth);
+
+// Crossfade "blink" sphere — same geometry, blink texture, semi-transparent.
+// Sits a hair above the main sphere to avoid z-fighting. Lighting / roughness
+// / normal are reused so the seam is invisible everywhere outside the
+// blinking country.
+let blinkMesh = null;
+if (hasBlink) {
+  const blinkMat = new THREE.MeshStandardMaterial({
+    map: blinkTex,
+    roughnessMap: roughTex,
+    roughness: 1.0,
+    metalness: 0.05,
+    normalMap: normalTex,
+    normalScale: new THREE.Vector2(0.9, 0.9),
+    emissive: new THREE.Color(0x0d0d0d),
+    emissiveIntensity: 0.45,
+    transparent: true,
+    opacity: 0,
+    depthWrite: false,
+  });
+  blinkMesh = new THREE.Mesh(new THREE.SphereGeometry(1.001, 256, 256), blinkMat);
+  blinkMesh.renderOrder = 1;
+  world.add(blinkMesh);
+}
+
+// ---- Lighting ----------------------------------------------------------
+const ambient = new THREE.AmbientLight(0xffffff, 0.55);
+scene.add(ambient);
+const sun = new THREE.DirectionalLight(0xfff4dc, 1.6);
+sun.position.copy(SUN_DIR).multiplyScalar(5);
+scene.add(sun);
+const fill = new THREE.DirectionalLight(0xffffff, 0.18);
+fill.position.set(-2, -1, -1);
+scene.add(fill);
+
+// ---- Arrow (optional) --------------------------------------------------
+// Bowed great-circle from A to B as a thick tube (real screen-space
+// thickness, unlike LineBasicMaterial which is capped at 1px on WebGL).
+// Drawing animation: rebuild a partial tube each frame for the current
+// progress. Tube + head geometry are cheap (a few hundred vertices), and
+// disposal-per-frame keeps the data deterministic.
+const ARROW_N = 96;                 // path samples (was 256 — overkill)
+const ARROW_MAX_ANGLE_DEG = 30;     // tangent at endpoints stays ≤ this from horizontal
+const ARROW_FADE_IN_START = 0.05;   // arrow starts appearing at 5% of clip
+const ARROW_FADE_IN_END   = 0.10;   // fully opaque by 10%
+const ARROW_FADE_OUT_START = 0.90;  // start fading near the end
+const ARROW_FADE_OUT_END   = 1.00;  // fully gone by clip end
+const ARROW_DRAW_START = 0.10;      // drawing animation begins after fade-in
+const ARROW_DRAW_END   = 0.55;      // arrow fully drawn at 55% of clip
+const ARROW_RADIUS_OFFSET = 1.018;  // floats slightly above the surface; tube reads as 3D
+// Thickness/length scaling: linear with omega, capped at the Cuba→NY arc
+// (~0.336 rad). A floor keeps very short arrows visible.
+const ARROW_REF_OMEGA   = 0.336;
+const ARROW_MIN_SCALE   = 0.45;
+const ARROW_TUBE_RADIUS = 0.012;
+const ARROW_HEAD_RADIUS = 0.020;   // ~1.7× tube width — proportional 2D head
+const ARROW_HEAD_LENGTH = 0.040;
+let arrowTube = null, arrowHead = null, arrowPath = null;
+let arrowTubeRadius = ARROW_TUBE_RADIUS;
+
+function latLonToVec(lat, lon, r) {
+  const phi = THREE.MathUtils.degToRad(lon + 90);
+  const theta = THREE.MathUtils.degToRad(lat);
+  return new THREE.Vector3(
+    r * Math.cos(theta) * Math.sin(phi),
+    r * Math.sin(theta),
+    r * Math.cos(theta) * Math.cos(phi),
+  );
+}
+
+function buildArrowPath() {
+  const a = latLonToVec(parseFloat(arrowFromLat), parseFloat(arrowFromLon), 1).normalize();
+  const b = latLonToVec(parseFloat(arrowToLat),   parseFloat(arrowToLon),   1).normalize();
+  const omega = Math.acos(THREE.MathUtils.clamp(a.dot(b), -1, 1));
+  const sinO = Math.sin(omega);
+  // Thickness scale: proportional to arc length, capped at the reference
+  // arc (Cuba→NY) — that's the "full" size you saw on the missile-crisis map.
+  const scale = THREE.MathUtils.clamp(omega / ARROW_REF_OMEGA, ARROW_MIN_SCALE, 1.0);
+  arrowTubeRadius = ARROW_TUBE_RADIUS * scale;
+  if (arrowHead) {
+    arrowHead.scale.set(scale, scale, scale);
+  }
+  // Scale the bow with the great-circle distance so the tangent at the
+  // endpoints stays at ARROW_MAX_ANGLE_DEG from horizontal regardless of
+  // how far apart the two points are. Derivation: at t=0, the tangent has
+  // a tangential component of magnitude R*ω and a radial component of
+  // bow·π; angle = atan(bow·π / (R·ω)).
+  const angleRad = THREE.MathUtils.degToRad(ARROW_MAX_ANGLE_DEG);
+  const bow = Math.tan(angleRad) * ARROW_RADIUS_OFFSET * omega / Math.PI;
+  const pts = [];
+  for (let i = 0; i < ARROW_N; i++) {
+    const t = i / (ARROW_N - 1);
+    let p;
+    if (sinO < 1e-6) {
+      p = a.clone();
+    } else {
+      const c1 = Math.sin((1 - t) * omega) / sinO;
+      const c2 = Math.sin(t * omega) / sinO;
+      p = a.clone().multiplyScalar(c1).add(b.clone().multiplyScalar(c2)).normalize();
+    }
+    const r = ARROW_RADIUS_OFFSET + Math.sin(t * Math.PI) * bow;
+    pts.push(p.multiplyScalar(r));
+  }
+  return pts;
+}
+
+const arrowColorObj = hasArrow ? desatColor(arrowColor) : null;
+// PBR material so the tube + cone catch the directional sun, giving real
+// 3D shading. Slight emissive bump keeps the night-side of the arc visible.
+const arrowMat = hasArrow
+  ? new THREE.MeshStandardMaterial({
+      color: arrowColorObj,
+      emissive: arrowColorObj.clone(),
+      emissiveIntensity: 0.22,
+      roughness: 0.45,
+      metalness: 0.05,
+      transparent: true,
+      opacity: 0,
+    })
+  : null;
+
+if (hasArrow) {
+  arrowPath = buildArrowPath();
+  // 3D cone head. ConeGeometry has its base at y=-l/2 and tip at y=+l/2;
+  // translating up by l/2 puts the base at y=0 and tip at y=l, so when we
+  // position the head at the ribbon's last vertex its base coincides with
+  // that vertex and the tip extends along +Y (= forward path direction).
+  const headGeom = new THREE.ConeGeometry(ARROW_HEAD_RADIUS, ARROW_HEAD_LENGTH, 24);
+  headGeom.translate(0, ARROW_HEAD_LENGTH / 2, 0);
+  arrowHead = new THREE.Mesh(headGeom, arrowMat);
+  arrowHead.visible = false;
+  world.add(arrowHead);
+}
+
+// ---- City markers (lit spheres sitting above the ground) --------------
+// Each entry { lat, lon, color, t_on, t_off?, mesh, mat }. We use a PBR
+// material so the sphere catches the sun and shows a real highlight, which
+// reads as "3D ball above the map" rather than a flat dot.
+const MARKER_RADIUS = 0.022;
+const MARKER_HEIGHT_OFFSET = 1.0;   // marker center on the math sphere surface
+const MARKER_POP_DURATION = 0.18;     // seconds to fade in / out
+const markerObjs = markers.map(m => {
+  const pos = latLonToVec(m.lat, m.lon, MARKER_HEIGHT_OFFSET);
+  const geom = new THREE.SphereGeometry(MARKER_RADIUS, 24, 24);
+  const colorObj = desatColor(m.color);
+  const mat = new THREE.MeshStandardMaterial({
+    color: colorObj,
+    emissive: colorObj.clone(),
+    emissiveIntensity: 0.35,           // self-glow so the night side stays visible
+    roughness: 0.35,                   // glossy
+    metalness: 0.0,
+    transparent: true,
+    opacity: 0,
+  });
+  const mesh = new THREE.Mesh(geom, mat);
+  mesh.position.copy(pos);
+  mesh.visible = false;
+  world.add(mesh);
+  return { ...m, mesh, mat };
+});
+
+function rebuildArrowTube(progress) {
+  // 3D tube along the great-circle path. CatmullRom interpolates between
+  // sampled points so the tube is smooth without needing huge ARROW_N.
+  if (arrowTube) {
+    arrowTube.geometry.dispose();
+    world.remove(arrowTube);
+    arrowTube = null;
+  }
+  const nPts = Math.max(2, Math.floor(progress * (ARROW_N - 1)));
+  const tubeEnd = Math.max(2, Math.min(nPts + 1, arrowPath.length));
+  if (tubeEnd < 2) return null;
+  const slice = arrowPath.slice(0, tubeEnd);
+  const curve = new THREE.CatmullRomCurve3(slice);
+  const segs = Math.max(8, slice.length * 2);
+  const geom = new THREE.TubeGeometry(curve, segs, arrowTubeRadius, 12, false);
+  arrowTube = new THREE.Mesh(geom, arrowMat);
+  world.add(arrowTube);
+  const tipIdx = tubeEnd - 1;
+  return { tipIdx, prevIdx: Math.max(0, tipIdx - 1) };
+}
+
+// ---- Time-driven state -------------------------------------------------
+function smoothstep(edge0, edge1, x) {
+  const tt = THREE.MathUtils.clamp((x - edge0) / Math.max(1e-6, edge1 - edge0), 0, 1);
+  return tt * tt * (3 - 2 * tt);
+}
+
+function setT(t) {
+  // Spin: world rotates around Y at `spinSpeed` deg/sec.
+  world.rotation.y = THREE.MathUtils.degToRad(t * spinSpeed);
+
+  // Blink: smooth crossfade of the second sphere's opacity around blinkTime.
+  // Profile: fade-in → hold-at-full → fade-out, single shot. blinkTime < 0
+  // means "midclip" (used when the CLI doesn't pass --blink-time).
+  if (hasBlink && blinkMesh) {
+    const peak = blinkTime >= 0 ? blinkTime : 0.5 * totalDur;
+    const fadeInStart  = peak - BLINK_FADE_IN - 0.5 * BLINK_HOLD;
+    const holdStart    = peak - 0.5 * BLINK_HOLD;
+    const holdEnd      = peak + 0.5 * BLINK_HOLD;
+    const fadeOutEnd   = peak + 0.5 * BLINK_HOLD + BLINK_FADE_OUT;
+    let op = 0;
+    if (t >= fadeInStart && t < holdStart) {
+      op = smoothstep(fadeInStart, holdStart, t);
+    } else if (t >= holdStart && t <= holdEnd) {
+      op = 1;
+    } else if (t > holdEnd && t <= fadeOutEnd) {
+      op = 1 - smoothstep(holdEnd, fadeOutEnd, t);
+    }
+    blinkMesh.material.opacity = op;
+    blinkMesh.visible = op > 0.005;
+  }
+
+  // Arrow lifecycle:
+  //   fade-in   (5–10%) → draw     (10–55%) → hold (55–90%) → fade-out (90–100%)
+  if (hasArrow) {
+    const frac = totalDur > 0 ? t / totalDur : 0;
+    const fadeIn  = smoothstep(ARROW_FADE_IN_START,  ARROW_FADE_IN_END,  frac);
+    const fadeOut = smoothstep(ARROW_FADE_OUT_START, ARROW_FADE_OUT_END, frac);
+    const opacity = fadeIn * (1.0 - fadeOut);
+    arrowMat.opacity = opacity;
+
+    const drawProgress = smoothstep(ARROW_DRAW_START, ARROW_DRAW_END, frac);
+    const tipInfo = rebuildArrowTube(drawProgress);
+    if (tipInfo) {
+      const { tipIdx, prevIdx } = tipInfo;
+      const tip = arrowPath[Math.min(tipIdx, arrowPath.length - 1)];
+      const prev = arrowPath[Math.min(prevIdx, arrowPath.length - 1)];
+      arrowHead.position.copy(tip);
+      // Cone is rotationally symmetric around its +Y axis — only one
+      // rotation needed to align +Y with the path-forward direction.
+      const fwd = tip.clone().sub(prev).normalize();
+      const up = new THREE.Vector3(0, 1, 0);
+      arrowHead.quaternion.setFromUnitVectors(up, fwd);
+      arrowHead.visible = drawProgress > 0.02 && opacity > 0.01;
+    }
+    if (arrowTube) arrowTube.visible = opacity > 0.01;
+  }
+
+  // Markers: pop in at t_on, optionally fade out at t_off.
+  for (const m of markerObjs) {
+    let op = 0;
+    if (t >= m.t_on) {
+      const since = t - m.t_on;
+      op = smoothstep(0, MARKER_POP_DURATION, since);
+      if (m.t_off !== null && m.t_off !== undefined && t > m.t_off) {
+        op *= 1 - smoothstep(0, MARKER_POP_DURATION, t - m.t_off);
+      }
+    }
+    m.mat.opacity = op;
+    m.mesh.visible = op > 0.01;
+  }
+}
+window.setT = setT;
+
+// ---- Render loop / readiness signal ------------------------------------
+let frames = 0;
+function frame() {
+  renderer.render(scene, camera);
+  frames += 1;
+  if (colorLoaded && roughLoaded && normalLoaded && blinkLoaded && frames > 3) {
+    window.__READY = true;
+  }
+  requestAnimationFrame(frame);
+}
+setT(0);
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
