@@ -141,58 +141,6 @@ export function CreateView({ onStart, loading, error }: CreateViewProps) {
           zIndex: 2,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div
-            style={{
-              width: 38,
-              height: 38,
-              borderRadius: 19,
-              background: "linear-gradient(135deg, #2A2520, #0B0907)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "#F0E9D8",
-              fontFamily: "var(--f-body)",
-              fontWeight: 600,
-              fontSize: 13,
-              letterSpacing: "0.02em",
-            }}
-          >
-            JT
-          </div>
-          <div>
-            <div style={{ fontSize: 12, color: "var(--text-2)", fontWeight: 500 }}>Good evening,</div>
-            <div
-              style={{
-                fontSize: 15,
-                fontWeight: 600,
-                color: "var(--text)",
-                fontFamily: "var(--f-body)",
-              }}
-            >
-              Julien
-            </div>
-          </div>
-        </div>
-        <button
-          aria-label="Saved courses"
-          style={{
-            width: 38,
-            height: 38,
-            borderRadius: 19,
-            background: "var(--surface)",
-            border: "1px solid var(--border)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            color: "var(--text)",
-            cursor: "pointer",
-          }}
-        >
-          <svg viewBox="0 0 24 24" fill="none" width={18} height={18} aria-hidden>
-            <path d="M6 4h12v17l-6-4-6 4V4z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
-          </svg>
-        </button>
       </div>
 
       {/* title */}
@@ -263,7 +211,7 @@ export function CreateView({ onStart, loading, error }: CreateViewProps) {
         )}
       </div>
 
-      {/* recents */}
+      {/* recents
       <div style={{ padding: "0 20px 28px", position: "relative", zIndex: 2 }}>
         <div
           style={{
@@ -315,7 +263,7 @@ export function CreateView({ onStart, loading, error }: CreateViewProps) {
         >
           Tap and speak naturally — like to a friend.
         </div>
-      </div>
+      </div> */}
     </div>
   );
 }

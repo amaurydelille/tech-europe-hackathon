@@ -3,36 +3,41 @@
 import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { ROUTES } from "@/constants";
-
-const SUMMARY_ITEMS = [
-  {
-    kind: "topic" as const,
-    label: "Topic",
-    value: "Napoleon Bonaparte — rise to power",
-  },
-  {
-    kind: "goal" as const,
-    label: "Goal",
-    value: "Prepare for Friday's history test",
-  },
-  {
-    kind: "level" as const,
-    label: "Level",
-    value: "High school · intermediate",
-  },
-  {
-    kind: "length" as const,
-    label: "Length",
-    value: "Short — about 8 minutes",
-  },
-  {
-    kind: "format" as const,
-    label: "Format",
-    value: "Mixed: video + reading + a quick check",
-  },
-];
+import type { OnboardingProfile } from "@/types";
 
 type GlyphKind = "topic" | "goal" | "level" | "length" | "format";
+
+interface SummaryItem {
+  kind: GlyphKind;
+  label: string;
+  value: string;
+}
+
+const DEMO_ITEMS: SummaryItem[] = [
+  { kind: "topic", label: "Topic", value: "Napoleon Bonaparte — rise to power" },
+  { kind: "goal", label: "Goal", value: "Prepare for Friday's history test" },
+  { kind: "level", label: "Level", value: "High school · intermediate" },
+  { kind: "length", label: "Length", value: "Short — about 8 minutes" },
+  { kind: "format", label: "Format", value: "Mixed: video + reading + a quick check" },
+];
+
+function profileToItems(profile: OnboardingProfile): SummaryItem[] {
+  return [
+    { kind: "topic", label: "Subject", value: profile.subject },
+    { kind: "goal", label: "Goal", value: profile.learning_goal },
+    {
+      kind: "level",
+      label: "Background",
+      value: profile.prior_knowledge,
+    },
+    {
+      kind: "length",
+      label: "Learner",
+      value: `${profile.name} · age ${profile.age}`,
+    },
+    { kind: "format", label: "Style", value: profile.content_style },
+  ];
+}
 
 function Glyph({ kind }: { kind: GlyphKind }) {
   const paths: Record<GlyphKind, React.ReactNode> = {
@@ -172,8 +177,14 @@ function SummaryCard({ kind, label, value, index, onEdit }: SummaryCardProps) {
   );
 }
 
-export function SummaryView({ onReset }: { onReset: () => void }) {
+interface SummaryViewProps {
+  onReset: () => void;
+  profile?: OnboardingProfile | null;
+}
+
+export function SummaryView({ onReset, profile }: SummaryViewProps) {
   const router = useRouter();
+  const items = profile ? profileToItems(profile) : DEMO_ITEMS;
 
   return (
     <div
@@ -286,7 +297,7 @@ export function SummaryView({ onReset }: { onReset: () => void }) {
           flex: 1,
         }}
       >
-        {SUMMARY_ITEMS.map((item, i) => (
+        {items.map((item, i) => (
           <SummaryCard
             key={item.label}
             {...item}

@@ -1,24 +1,14 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { useVoiceRecording } from "@/hooks/useVoiceRecording";
+import { useOnboardingVoice } from "@/hooks/useOnboardingVoice";
 import { CreateView } from "./CreateView";
 import { VoiceView } from "./VoiceView";
 import { SummaryView } from "./SummaryView";
 import type { WaveMode } from "./Waveform";
 
 type Scene = "create" | "voice" | "summary";
-
-// Demo: auto-cycle through voice states to showcase the waveform
-const VOICE_CYCLE: { mode: WaveMode; duration: number }[] = [
-  { mode: "listening", duration: 4000 },
-  { mode: "thinking", duration: 2000 },
-  { mode: "ai", duration: 4500 },
-  { mode: "listening", duration: 3500 },
-  { mode: "thinking", duration: 1800 },
-  { mode: "ai", duration: 5000 },
-];
 
 const EASE = [0.4, 0, 0.2, 1] as [number, number, number, number];
 const fadeSlide = {
@@ -28,62 +18,44 @@ const fadeSlide = {
   transition: { duration: 0.38, ease: EASE },
 };
 
+type Override = "none" | "summary" | "create";
+
 export function ChatFlow() {
-  const [scene, setScene] = useState<Scene>("create");
-  const [voiceMode, setVoiceMode] = useState<WaveMode>("listening");
-  const { state: recState, amplitude, error, start, stop } = useVoiceRecording();
+  const [override, setOverride] = useState<Override>("none");
+  const { status, amplitude, error, profile, start, stop } = useOnboardingVoice();
 
-  // Demo voice-state cycling
-  const cycleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const cycleIdxRef = useRef(0);
-
-  const startCycle = useCallback(() => {
-    function tick() {
-      const step = VOICE_CYCLE[cycleIdxRef.current % VOICE_CYCLE.length];
-      setVoiceMode(step.mode);
-      cycleIdxRef.current++;
-      cycleRef.current = setTimeout(tick, step.duration);
-    }
-    tick();
-  }, []);
-
-  const stopCycle = useCallback(() => {
-    if (cycleRef.current) clearTimeout(cycleRef.current);
-  }, []);
-
-  // Kick off voice scene
   const handleStart = useCallback(async () => {
+    setOverride("none");
     await start();
-    // If mic access was denied, stay on create with error shown
-    // (error is surfaced via the hook)
   }, [start]);
-
-  // Transition to voice scene once mic is active (or if permission was denied we show error)
-  useEffect(() => {
-    if (recState === "recording" && scene === "create") {
-      setScene("voice");
-      cycleIdxRef.current = 0;
-      startCycle();
-    }
-    if (recState === "error" && scene === "create") {
-      // error shown inline in CreateView
-    }
-  }, [recState, scene, startCycle]);
 
   const handleEnd = useCallback(() => {
     stop();
-    stopCycle();
-    setScene("summary");
-  }, [stop, stopCycle]);
+    setOverride("summary");
+  }, [stop]);
 
   const handleReset = useCallback(() => {
-    setScene("create");
-    setVoiceMode("listening");
-    cycleIdxRef.current = 0;
-  }, []);
+    stop();
+    setOverride("create");
+  }, [stop]);
 
-  // Cleanup on unmount
-  useEffect(() => () => { stop(); stopCycle(); }, [stop, stopCycle]);
+  // Cleanup on unmount handled by the hook.
+  useEffect(() => () => stop(), [stop]);
+
+  const scene: Scene = useMemo(() => {
+    if (override === "create") return "create";
+    if (override === "summary" || status === "done") return "summary";
+    if (status === "listening" || status === "speaking" || status === "thinking") {
+      return "voice";
+    }
+    return "create";
+  }, [status, override]);
+
+  const voiceMode: WaveMode = useMemo(() => {
+    if (status === "speaking") return "ai";
+    if (status === "thinking" || status === "connecting") return "thinking";
+    return "listening";
+  }, [status]);
 
   return (
     <div
@@ -99,7 +71,7 @@ export function ChatFlow() {
           <motion.div key="create" {...fadeSlide} style={{ position: "absolute", inset: 0 }}>
             <CreateView
               onStart={handleStart}
-              loading={recState === "requesting"}
+              loading={status === "connecting"}
               error={error}
             />
           </motion.div>
@@ -107,13 +79,17 @@ export function ChatFlow() {
 
         {scene === "voice" && (
           <motion.div key="voice" {...fadeSlide} style={{ position: "absolute", inset: 0 }}>
-            <VoiceView mode={voiceMode} amplitude={amplitude} onEnd={handleEnd} />
+            <VoiceView
+              mode={voiceMode}
+              amplitude={amplitude}
+              onEnd={handleEnd}
+            />
           </motion.div>
         )}
 
         {scene === "summary" && (
           <motion.div key="summary" {...fadeSlide} style={{ position: "absolute", inset: 0 }}>
-            <SummaryView onReset={handleReset} />
+            <SummaryView onReset={handleReset} profile={profile} />
           </motion.div>
         )}
       </AnimatePresence>
