@@ -153,8 +153,9 @@ export function parseCourse(md: string): ParsedCourse {
 
   const sources = parseSources(refBody);
 
+  // Count actual words directly — bypasses the per-chapter Math.max(20) clamp
   const totalWords = chapters.reduce(
-    (sum, c) => sum + (c.readTimeSec / 60) * 200,
+    (sum, c) => sum + blocksWordCount(c.blocks),
     0
   );
   const totalReadMin = Math.max(1, Math.round(totalWords / 200));
