@@ -29,6 +29,25 @@ interface VideoBlockProps {
 
 interface Cue { start: number; end: number; text: string }
 interface TimedSource { name: string; url: string; timestamp: number }
+interface SocialComment { id: string; author: string; text: string; createdAt: string }
+interface Socials { likes: number; shares: number; comments: SocialComment[] }
+
+function fmtCount(n: number) {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1).replace(/\.0$/, "")}K`;
+  return String(n);
+}
+
+function fmtRelTime(iso: string) {
+  const t = new Date(iso).getTime();
+  if (!Number.isFinite(t)) return "";
+  const diff = (Date.now() - t) / 1000;
+  if (diff < 60) return "just now";
+  if (diff < 3600) return `${Math.floor(diff / 60)}m`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
+  if (diff < 604800) return `${Math.floor(diff / 86400)}d`;
+  return new Date(iso).toLocaleDateString();
+}
 
 function parseSRT(raw: string): Cue[] {
   return raw.trim().split(/\n\n+/).flatMap((block) => {
@@ -113,7 +132,6 @@ function VideoBlock({ courseId, isPlaying, progress, onTogglePlay, onSeek }: Vid
 
   const closeSourcePopup = useCallback(() => {
     setIsSourceOpen(false);
-    setActiveSource(null);
     if (resumeAfterPopupRef.current) {
       videoRef.current?.play().catch(() => {});
     }
@@ -189,9 +207,9 @@ function VideoBlock({ courseId, isPlaying, progress, onTogglePlay, onSeek }: Vid
         <div
           style={{
             position: "absolute",
-            top: 72,
-            right: 16,
-            zIndex: 5,
+            top: 10,
+            right: 14,
+            zIndex: 35,
             pointerEvents: "auto",
             display: "flex",
             flexDirection: "column",
@@ -488,6 +506,322 @@ function ShareModal({ onClose }: { onClose: () => void }) {
   );
 }
 
+// ── Comments modal ────────────────────────────────────────────────────
+function CommentsModal({
+  comments,
+  onClose,
+}: {
+  comments: SocialComment[];
+  onClose: () => void;
+}) {
+  return (
+    <>
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.2 }}
+        onClick={onClose}
+        style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: 80,
+          background: "rgba(0,0,0,0.55)",
+          backdropFilter: "blur(4px)",
+        }}
+      />
+      <motion.div
+        initial={{ y: "100%" }}
+        animate={{ y: 0 }}
+        exit={{ y: "100%" }}
+        transition={{ duration: 0.28, ease: [0.32, 0.72, 0, 1] as [number, number, number, number] }}
+        style={{
+          position: "fixed",
+          left: 0,
+          right: 0,
+          bottom: 0,
+          zIndex: 90,
+          background: "var(--surface)",
+          borderTopLeftRadius: 24,
+          borderTopRightRadius: 24,
+          maxHeight: "72dvh",
+          display: "flex",
+          flexDirection: "column",
+          boxShadow: "0 -16px 48px rgba(0,0,0,0.22)",
+        }}
+      >
+        <div
+          style={{
+            padding: "14px 16px 10px",
+            borderBottom: "1px solid var(--border)",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 8,
+          }}
+        >
+          <div
+            style={{
+              width: 36,
+              height: 4,
+              borderRadius: 2,
+              background: "var(--border-strong)",
+            }}
+          />
+          <div
+            style={{
+              fontFamily: "var(--f-head)",
+              fontSize: 15,
+              fontWeight: 500,
+              color: "var(--text)",
+              letterSpacing: "-0.01em",
+            }}
+          >
+            {comments.length} {comments.length === 1 ? "comment" : "comments"}
+          </div>
+        </div>
+        <div
+          className="no-scrollbar"
+          style={{
+            overflowY: "auto",
+            padding: "8px 4px 24px",
+            flex: 1,
+          }}
+        >
+          {comments.length === 0 ? (
+            <div
+              style={{
+                padding: "40px 24px",
+                textAlign: "center",
+                color: "var(--text-3)",
+                fontSize: 13,
+                fontFamily: "var(--f-body)",
+              }}
+            >
+              No comments yet.
+            </div>
+          ) : (
+            comments.map((c) => (
+              <div
+                key={c.id}
+                style={{
+                  display: "flex",
+                  gap: 12,
+                  padding: "12px 18px",
+                }}
+              >
+                <div
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 18,
+                    background: "var(--bg-tint)",
+                    border: "1px solid var(--border)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexShrink: 0,
+                    fontSize: 13,
+                    fontWeight: 600,
+                    color: "var(--text)",
+                    fontFamily: "var(--f-body)",
+                  }}
+                >
+                  {c.author.charAt(0).toUpperCase()}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "baseline",
+                      gap: 8,
+                      marginBottom: 2,
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 600,
+                        color: "var(--text)",
+                        fontFamily: "var(--f-body)",
+                      }}
+                    >
+                      {c.author}
+                    </span>
+                    <span
+                      style={{
+                        fontSize: 11,
+                        color: "var(--text-3)",
+                        fontFamily: "var(--f-body)",
+                      }}
+                    >
+                      {fmtRelTime(c.createdAt)}
+                    </span>
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 14,
+                      color: "var(--text-2)",
+                      lineHeight: 1.5,
+                      fontFamily: "var(--f-body)",
+                    }}
+                  >
+                    {c.text}
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </motion.div>
+    </>
+  );
+}
+
+// ── Social rail (right side, overlaid on video) ───────────────────────
+function SocialRail({
+  likes,
+  shares,
+  commentCount,
+  liked,
+  onLike,
+  onComment,
+  onShare,
+}: {
+  likes: number;
+  shares: number;
+  commentCount: number;
+  liked: boolean;
+  onLike: () => void;
+  onComment: () => void;
+  onShare: () => void;
+}) {
+  return (
+    <div
+      style={{
+        position: "absolute",
+        right: 12,
+        bottom: 96,
+        zIndex: 25,
+        display: "flex",
+        flexDirection: "column",
+        gap: 18,
+        alignItems: "center",
+        pointerEvents: "auto",
+      }}
+    >
+      <RailButton
+        ariaLabel={liked ? "Unlike" : "Like"}
+        onClick={onLike}
+        count={fmtCount(likes)}
+        active={liked}
+      >
+        <svg viewBox="0 0 24 24" width={26} height={26} aria-hidden>
+          <path
+            d="M12 20.7s-7.2-4.35-9.3-9A4.8 4.8 0 0 1 12 6.4a4.8 4.8 0 0 1 9.3 5.3c-2.1 4.65-9.3 9-9.3 9z"
+            fill={liked ? "#ff4d6d" : "none"}
+            stroke={liked ? "#ff4d6d" : "currentColor"}
+            strokeWidth="1.8"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </RailButton>
+      <RailButton
+        ariaLabel="Comments"
+        onClick={onComment}
+        count={fmtCount(commentCount)}
+      >
+        <svg viewBox="0 0 24 24" width={26} height={26} fill="none" aria-hidden>
+          <path
+            d="M4 5h16v10H8.5L4 19V5z"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </RailButton>
+      <RailButton
+        ariaLabel="Share"
+        onClick={onShare}
+        count={fmtCount(shares)}
+      >
+        <svg viewBox="0 0 24 24" width={24} height={24} fill="none" aria-hidden>
+          <circle cx="18" cy="5" r="2.5" stroke="currentColor" strokeWidth="1.8" />
+          <circle cx="6" cy="12" r="2.5" stroke="currentColor" strokeWidth="1.8" />
+          <circle cx="18" cy="19" r="2.5" stroke="currentColor" strokeWidth="1.8" />
+          <path
+            d="M8.3 10.7l7.4-4.4M8.3 13.3l7.4 4.4"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+          />
+        </svg>
+      </RailButton>
+    </div>
+  );
+}
+
+function RailButton({
+  onClick,
+  ariaLabel,
+  count,
+  active,
+  children,
+}: {
+  onClick: () => void;
+  ariaLabel: string;
+  count: string;
+  active?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      aria-label={ariaLabel}
+      style={{
+        background: "transparent",
+        border: "none",
+        padding: 0,
+        cursor: "pointer",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: 4,
+        color: "#fff",
+        WebkitTapHighlightColor: "transparent",
+        filter: "drop-shadow(0 2px 6px rgba(0,0,0,0.45))",
+      }}
+    >
+      <div
+        style={{
+          width: 46,
+          height: 46,
+          borderRadius: 23,
+          background: "rgba(20,20,20,0.42)",
+          backdropFilter: "blur(10px)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: active ? "#ff4d6d" : "#fff",
+        }}
+      >
+        {children}
+      </div>
+      <span
+        style={{
+          fontSize: 12,
+          fontWeight: 600,
+          fontFamily: "var(--f-body)",
+          fontVariantNumeric: "tabular-nums",
+          letterSpacing: 0.2,
+        }}
+      >
+        {count}
+      </span>
+    </button>
+  );
+}
+
 // ── Pill button (frosted glass, overlaid on dark video) ───────────────
 function PillBtn({
   onClick,
@@ -515,6 +849,7 @@ function PillBtn({
         justifyContent: "center",
         cursor: "pointer",
         WebkitTapHighlightColor: "transparent",
+        pointerEvents: "auto",
       }}
     >
       {children}
@@ -1051,7 +1386,45 @@ export function CourseViewA({ course, courseId }: { course: ParsedCourse; course
   const [progress, setProgress] = useState(0);
   const [view, setView] = useState<View>("video");
   const [showShare, setShowShare] = useState(false);
+  const [showComments, setShowComments] = useState(false);
+  const [socials, setSocials] = useState<Socials>({ likes: 0, shares: 0, comments: [] });
+  const [liked, setLiked] = useState(false);
   const [readProgress, setReadProgress] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/course/${encodeURIComponent(courseId)}/socials`)
+      .then((r) => r.json())
+      .then((data: Partial<Socials>) => {
+        if (cancelled) return;
+        setSocials({
+          likes: typeof data.likes === "number" ? data.likes : 0,
+          shares: typeof data.shares === "number" ? data.shares : 0,
+          comments: Array.isArray(data.comments) ? data.comments : [],
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setSocials({ likes: 0, shares: 0, comments: [] });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [courseId]);
+
+  const handleLike = useCallback(() => {
+    setLiked((prev) => {
+      const next = !prev;
+      setSocials((s) => ({ ...s, likes: Math.max(0, s.likes + (next ? 1 : -1)) }));
+      return next;
+    });
+  }, []);
+
+  const handleShare = useCallback(() => {
+    setShowShare(true);
+    setSocials((s) => ({ ...s, shares: s.shares + 1 }));
+  }, []);
+
+  const handleOpenComments = useCallback(() => setShowComments(true), []);
   const articleRef = useRef<HTMLDivElement>(null);
   const outerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<View>("video");
@@ -1160,6 +1533,7 @@ export function CourseViewA({ course, courseId }: { course: ParsedCourse; course
           display: "flex",
           alignItems: "center",
           gap: 10,
+          pointerEvents: "none",
         }}
       >
         <PillBtn ariaLabel="Back" onClick={() => router.push("/chat")}>
@@ -1168,14 +1542,6 @@ export function CourseViewA({ course, courseId }: { course: ParsedCourse; course
           </svg>
         </PillBtn>
         <div style={{ flex: 1 }} />
-        <PillBtn ariaLabel="Share" onClick={() => setShowShare(true)}>
-          <svg viewBox="0 0 24 24" fill="none" width={18} height={18} aria-hidden>
-            <circle cx="18" cy="5" r="2.5" stroke="currentColor" strokeWidth="1.7" />
-            <circle cx="6" cy="12" r="2.5" stroke="currentColor" strokeWidth="1.7" />
-            <circle cx="18" cy="19" r="2.5" stroke="currentColor" strokeWidth="1.7" />
-            <path d="M8.3 10.7l7.4-4.4M8.3 13.3l7.4 4.4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
-          </svg>
-        </PillBtn>
       </div>
 
       {/* ── Horizontal view track */}
@@ -1189,13 +1555,22 @@ export function CourseViewA({ course, courseId }: { course: ParsedCourse; course
         }}
       >
         {/* Fullscreen video panel (first) */}
-        <div style={{ width: "50%", height: "100%" }}>
+        <div style={{ width: "50%", height: "100%", position: "relative" }}>
           <VideoBlock
             courseId={courseId}
             isPlaying={isPlaying}
             progress={progress}
             onTogglePlay={togglePlay}
             onSeek={seek}
+          />
+          <SocialRail
+            likes={socials.likes}
+            shares={socials.shares}
+            commentCount={socials.comments.length}
+            liked={liked}
+            onLike={handleLike}
+            onComment={handleOpenComments}
+            onShare={handleShare}
           />
         </div>
 
@@ -1270,6 +1645,16 @@ export function CourseViewA({ course, courseId }: { course: ParsedCourse; course
       {/* ── Share modal */}
       <AnimatePresence>
         {showShare && <ShareModal onClose={() => setShowShare(false)} />}
+      </AnimatePresence>
+
+      {/* ── Comments modal */}
+      <AnimatePresence>
+        {showComments && (
+          <CommentsModal
+            comments={socials.comments}
+            onClose={() => setShowComments(false)}
+          />
+        )}
       </AnimatePresence>
     </div>
   );
