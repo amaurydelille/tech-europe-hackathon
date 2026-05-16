@@ -99,7 +99,7 @@ Read the JSON output to learn the true `duration` and use it when placing the sp
 
 **Time budget for real video.** The total wall-time of your `gen_video` clips should be **~{{REAL_VIDEO_PERCENT}}% of the target video duration** (about **{{REAL_VIDEO_SECONDS}} seconds** of real-video footage in this run). Spend that budget on the shots where motion most carries the narrative; cover everything else with `animate_image`. Going over the budget is fine only if a shot genuinely cannot be staged any other way.
 
-**Minimum real video.** Every run must include **at least one `gen_video` clip — ideally one or two**. Animated stills alone make the final video feel flat; one well-chosen real-video shot (the most kinetic moment of the lesson) gives it life. Do not skip this even if the budget is tight.
+**Minimum real video.** Every run must include **at least two `gen_video` clips**, and each one must actually show **real movement** — a body moving through the frame, water flowing, a camera move with parallax, a hand performing an action. Static "real-video" shots where nothing changes between frames defeat the purpose and waste the budget; pick those moments deliberately and prompt for explicit motion. Do not drop below two clips even if the budget is tight.
 
 **Keep individual clips short.** 5 seconds is enough for almost every beat — if you want a longer shot, prefer **two 5-second clips with different framings** (wide → close-up, or alternate angles) rather than one 10-second take. This is faster to generate and reads better cinematically.
 
