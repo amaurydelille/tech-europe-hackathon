@@ -52,6 +52,7 @@ def _build_prompt(
     workspace: Workspace,
     target_duration_seconds: int,
     title: str | None = None,
+    brainrot: bool = False,
 ) -> str:
     instructions = _render_instructions(target_duration_seconds)
     tools_src = REPO_ROOT / "src" / "backend" / "video_generation" / "tools"
@@ -61,8 +62,16 @@ def _build_prompt(
     final_sources_path = workspace.outputs_dir / "sources.json"
     venv_python = REPO_ROOT / ".venv" / "bin" / "python"
     title_line = (
-        f"- Lesson title (use this verbatim for `title_sequence --title`): {title!r}\n"
+        f"- Lesson title (use this verbatim for the title-card `animate_image --title`): {title!r}\n"
         if title
+        else ""
+    )
+    brainrot_line = (
+        "- **Brainrot mode is ON** for this run: pass `--brainrot-mode` to **every** "
+        "`gen_tts` call (faster, more energetic delivery). The pipeline will also "
+        "composite the finished video onto a Subway-Surfers background with random "
+        "spins after you finish — you don't have to do that part yourself.\n"
+        if brainrot
         else ""
     )
     return (
@@ -81,6 +90,7 @@ def _build_prompt(
         f"### Run parameters\n\n"
         f"- Target total duration: ~{target_duration_seconds} seconds.\n"
         f"{title_line}"
+        f"{brainrot_line}"
         f"\n### Running tools\n\n"
         f"Invoke each tool with the project's venv python directly: "
         f"`{venv_python} -m backend.video_generation.tools.<name> ...`. "
@@ -118,6 +128,7 @@ def generate_video(
     *,
     title: str | None = None,
     target_duration_seconds: int = config.target_duration_seconds,
+    brainrot: bool = False,
     model: str | None = DEFAULT_CODEX_MODEL,
     extra_env: dict | None = None,
 ) -> Path:
@@ -141,7 +152,9 @@ def generate_video(
         raise RuntimeError("`ffmpeg` not found on PATH")
 
     workspace = _prepare_workspace(lesson_md)
-    prompt = _build_prompt(workspace, target_duration_seconds, title=title)
+    prompt = _build_prompt(
+        workspace, target_duration_seconds, title=title, brainrot=brainrot,
+    )
 
     env = os.environ.copy()
     if extra_env:
@@ -170,6 +183,14 @@ def generate_video(
                 f"codex finished but no {label} at {path}. "
                 f"See {workspace.root / 'codex.last_message.txt'} for the agent's last message."
             )
+
+    if brainrot:
+        from .tools.brainrot_overlay import apply_brainrot
+
+        composited = workspace.outputs_dir / "video.brainrot.mp4"
+        apply_brainrot(foreground_video=produced, out_path=composited)
+        # Replace video.mp4 in place so downstream copies pick up the brainrot version.
+        composited.replace(produced)
 
     if out_dir is not None:
         out_dir = Path(out_dir)
@@ -243,6 +264,12 @@ def _main(argv: list[str] | None = None) -> int:
         default=config.target_duration_seconds,
         help="Target total video length in seconds.",
     )
+    parser.add_argument(
+        "--brainrot",
+        action="store_true",
+        help="Enable brainrot mode: faster TTS + final video composited onto a "
+             "Subway-Surfers background with random spins.",
+    )
     args = parser.parse_args(argv)
 
     if not args.lesson.is_file():
@@ -256,6 +283,7 @@ def _main(argv: list[str] | None = None) -> int:
         out_dir=args.out_dir,
         title=lesson_title,
         target_duration_seconds=args.duration,
+        brainrot=args.brainrot,
         model=args.model,
     )
     elapsed = time.monotonic() - started
