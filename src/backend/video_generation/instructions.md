@@ -8,10 +8,11 @@ You are the director of a short, polished educational video. Your output is a si
 
 ## Output
 
-- `outputs/final.mp4` — the finished video.
+- `outputs/final.mp4` — the finished video (no burned-in subtitles).
+- `outputs/final.srt` — SubRip subtitle file for the narration (consumed by the app, not muxed into the MP4).
 - `assets/script.json` — the timestamped script you authored (kept for reproducibility).
 
-When `outputs/final.mp4` exists and is valid, print the absolute path to that file and stop.
+When both `outputs/final.mp4` and `outputs/final.srt` exist and are valid, print their absolute paths and stop.
 
 ## Hard rules (read carefully)
 
@@ -88,7 +89,7 @@ uv run python -m backend.video_generation.tools.gen_tts \
     --out assets/audio/sNNN.wav
 ```
 
-Read the JSON output to learn the true `duration` and use it when placing the speech in `script.json`. The output also includes a `timestamps` array — segment timings produced by the TTS engine (typically word- or phrase-level), each item shaped `{"text": ..., "start": ..., "end": ...}` with times in seconds **relative to the start of this speech audio**. **You MUST copy that array verbatim into the matching speech entry's `timestamps` field** in `script.json`. The stitcher requires this field on every speech entry and will reject the script if it is missing or empty — there is no fallback. The timestamps drive the burned-in subtitles on the final video.
+Read the JSON output to learn the true `duration` and use it when placing the speech in `script.json`. The output also includes a `timestamps` array — segment timings produced by the TTS engine (typically word- or phrase-level), each item shaped `{"text": ..., "start": ..., "end": ...}` with times in seconds **relative to the start of this speech audio**. **You MUST copy that array verbatim into the matching speech entry's `timestamps` field** in `script.json`. The stitcher requires this field on every speech entry and will reject the script if it is missing or empty — there is no fallback. The timestamps drive the `outputs/final.srt` subtitle file that `stitch` writes alongside the MP4.
 
 ### Step 6 — Generate visuals (anchored)
 
@@ -215,11 +216,11 @@ uv run python -m backend.video_generation.tools.stitch \
     --out outputs/final.mp4
 ```
 
-This tool validates the script internally and refuses to run on an invalid one. If it errors, read the error message, fix `script.json` (or regenerate the offending asset), and re-run.
+This tool validates the script internally and refuses to run on an invalid one. It writes the MP4 to `--out` **and** a SubRip subtitle file at the matching `.srt` path (e.g. `--out outputs/final.mp4` produces `outputs/final.srt` alongside). If it errors, read the error message, fix `script.json` (or regenerate the offending asset), and re-run.
 
 ### Step 9 — Done
 
-Print the absolute path to `outputs/final.mp4` and stop.
+Print the absolute paths to `outputs/final.mp4` and `outputs/final.srt`, then stop.
 
 ## Tool reference (authoritative)
 
@@ -231,7 +232,7 @@ The table below is the complete contract for every tool. **Do not read the tool 
 | `gen_video` | Generate a **silent** 5s or 10s clip from a reference image (real motion, image-to-video). Slow (1–3 min/call). Samples 2 fps frames for inspection. | `--prompt`, `--image`, `--duration` (5 or 10), `--out`; optional `--resolution` (480p/720p/1080p), `--aspect`, `--seed` | `{path, duration, frame_paths, model, seed}` |
 | `animate_image` | Turn a still into a short clip with a slow Ken-Burns-style zoom. Pure ffmpeg, ~1 second per call. **Prefer this over `gen_video` whenever you don't need true motion.** | `--image`, `--duration`, `--out`; optional `--zoom-from`, `--zoom-to`, `--resolution`, `--aspect` | `{path, duration}` |
 | `gen_tts` | Synthesize one narration line (text-to-speech). Also returns segment-level timestamps for subtitle rendering. | `--text`, `--voice-id`, `--out`; optional `--brainrot-mode` (faster delivery) | `{path, duration, sample_rate, timestamps: [{text, start, end}, ...]}` |
-| `stitch` | Validate the script and mux all assets into the final MP4 with audio mix, burning subtitles from each speech entry's `timestamps`. | `--script`, `--out` | `{path, duration, subtitle_cues}` |
+| `stitch` | Validate the script and mux all assets into the final MP4 with audio mix. Also writes a SubRip subtitle file at the same path with a `.srt` extension, built from each speech entry's `timestamps`. | `--script`, `--out` | `{path, srt_path, duration, subtitle_cues}` |
 
 All tools print a single JSON line to stdout; non-zero exit means failure (error on stderr).
 

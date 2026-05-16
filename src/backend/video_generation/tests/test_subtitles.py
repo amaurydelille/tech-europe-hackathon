@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from backend.video_generation.tools.subtitles import build_cues, render_cue_png, Cue
+from backend.video_generation.tools.subtitles import Cue, build_cues, build_srt
 from backend.video_generation.tools.validate_script import SpeechEntry, WordTimestamp
 
 
@@ -68,17 +68,21 @@ def test_build_cues_offsets_into_absolute_timeline() -> None:
     assert abs(cues[0].end - 5.9) < 0.01
 
 
-def test_render_cue_png_writes_transparent_image(tmp_path: Path) -> None:
-    cue = Cue(start=0.0, end=2.0, text="Hello, world.")
-    out = tmp_path / "cue.png"
-    w, h = render_cue_png(cue, out, video_w=480, video_h=854)
+def test_build_srt_serializes_cues_with_subrip_format() -> None:
+    cues = [
+        Cue(start=0.0, end=1.5, text="Hello."),
+        Cue(start=2.0, end=3.456, text="World."),
+    ]
+    srt = build_srt(cues)
+    assert srt == (
+        "1\n00:00:00,000 --> 00:00:01,500\nHello.\n"
+        "\n"
+        "2\n00:00:02,000 --> 00:00:03,456\nWorld.\n"
+    )
 
-    assert out.is_file()
-    assert w > 0 and h > 0
-    # Sanity-check it is RGBA with at least one transparent pixel.
-    from PIL import Image
 
-    img = Image.open(out)
-    assert img.mode == "RGBA"
-    alpha = img.getchannel("A")
-    assert alpha.getextrema()[0] == 0  # has transparent regions
+def test_build_srt_handles_hour_boundary_and_empty_input() -> None:
+    cues = [Cue(start=3661.789, end=3662.001, text="late.")]
+    srt = build_srt(cues)
+    assert "01:01:01,789 --> 01:01:02,001" in srt
+    assert build_srt([]) == ""

@@ -36,9 +36,11 @@ class Config(BaseModel):
     aspect: str
     target_duration_seconds: int
     real_video_time_share: float
-    # Gradium padding_bonus: negative => faster speech, positive => slower.
-    # Range -4.0..4.0, default 0.0. Negative ~ -1.0 gives a modest speed-up.
-    tts_padding_bonus: float
+    # Speed multiplier applied to the WAV after TTS via ffmpeg atempo
+    # (no pitch shift). 1.0 = unchanged, 1.1 = 10% faster.
+    tts_speed: float
+    # Speed multiplier used when brainrot_mode is on. Same semantics.
+    brainrot_speed: float
     models: Models
 
 

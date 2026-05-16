@@ -95,10 +95,14 @@ def test_stitch_video_with_speech_overlay(tmp_path: Path) -> None:
     assert out.is_file()
     assert result["path"] == str(out)
     assert result["subtitle_cues"] == 1
+    srt = tmp_path / "final.srt"
+    assert srt.is_file()
+    assert result["srt_path"] == str(srt)
+    assert "hello" in srt.read_text().lower()
     assert probe_duration(out) == pytest.approx(8.0, abs=0.5)
 
 
-def test_stitch_burns_subtitles_from_timestamps(tmp_path: Path) -> None:
+def test_stitch_writes_srt_with_grouped_cues(tmp_path: Path) -> None:
     audio = tmp_path / "s000.wav"
     _make_wav(audio, duration_s=3.0)
     vid = tmp_path / "v000.mp4"
@@ -151,9 +155,13 @@ def test_stitch_burns_subtitles_from_timestamps(tmp_path: Path) -> None:
 
     assert out.is_file()
     assert result["subtitle_cues"] >= 1
-    cue_dir = tmp_path / "subtitles"
-    assert cue_dir.is_dir()
-    assert any(cue_dir.glob("cue_*.png"))
+    srt = tmp_path / "final.srt"
+    assert srt.is_file()
+    srt_text = srt.read_text()
+    # SubRip format: numbered blocks separated by blank lines, timing line with `-->`.
+    assert "1\n" in srt_text
+    assert " --> " in srt_text
+    assert "Hello" in srt_text and "world" in srt_text
     assert probe_duration(out) == pytest.approx(8.0, abs=0.5)
 
 

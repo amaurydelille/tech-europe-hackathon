@@ -60,6 +60,8 @@ class _FakeClient:
 
 
 def test_gen_tts_writes_wav_and_returns_duration(tmp_path: Path) -> None:
+    from backend.video_generation.config import config as cfg
+
     wav = _make_wav_bytes(duration_s=2.5)
     client = _FakeClient(wav)
     out = tmp_path / "speech.wav"
@@ -72,10 +74,10 @@ def test_gen_tts_writes_wav_and_returns_duration(tmp_path: Path) -> None:
     )
 
     assert out.is_file()
-    assert out.read_bytes() == wav
     assert result["path"] == str(out)
     assert result["sample_rate"] == 48000
-    assert abs(result["duration"] - 2.5) < 0.01
+    # Audio is sped up by config.tts_speed after Gradium returns.
+    assert result["duration"] == pytest.approx(2.5 / cfg.tts_speed, abs=0.1)
 
     assert len(client.calls) == 1
     assert client.calls[0]["text"] == "Hello world"
@@ -84,6 +86,8 @@ def test_gen_tts_writes_wav_and_returns_duration(tmp_path: Path) -> None:
 
 
 def test_gen_tts_emits_timestamps(tmp_path: Path) -> None:
+    from backend.video_generation.config import config as cfg
+
     wav = _make_wav_bytes(duration_s=1.5)
     segments = [
         _FakeSegment(text="Hello", start_s=0.0, stop_s=0.5),
@@ -99,9 +103,10 @@ def test_gen_tts_emits_timestamps(tmp_path: Path) -> None:
         client_factory=lambda: client,
     )
 
+    s = cfg.tts_speed
     assert result["timestamps"] == [
-        {"text": "Hello", "start": 0.0, "end": 0.5},
-        {"text": "world", "start": 0.6, "end": 1.2},
+        {"text": "Hello", "start": 0.0, "end": pytest.approx(0.5 / s)},
+        {"text": "world", "start": pytest.approx(0.6 / s), "end": pytest.approx(1.2 / s)},
     ]
 
 
@@ -169,32 +174,45 @@ def test_gen_tts_raises_when_sdk_returns_no_timestamps(tmp_path: Path) -> None:
         )
 
 
-def test_gen_tts_brainrot_mode_lowers_padding_bonus(tmp_path: Path) -> None:
+def test_gen_tts_brainrot_mode_speeds_up_audio_and_timestamps(tmp_path: Path) -> None:
     from backend.video_generation.config import config as cfg
 
-    wav = _make_wav_bytes(duration_s=1.0)
-    client = _FakeClient(wav)
+    wav = _make_wav_bytes(duration_s=4.0)
+    segments = [
+        _FakeSegment(text="word", start_s=0.0, stop_s=2.0),
+        _FakeSegment(text="two", start_s=2.0, stop_s=4.0),
+    ]
+    client = _FakeClient(wav, segments=segments)
     out = tmp_path / "speech.wav"
 
-    gen_tts.gen_tts(
-        text="hi", out=out, voice_id="v",
+    result = gen_tts.gen_tts(
+        text="word two", out=out, voice_id="v",
         brainrot_mode=True,
         client_factory=lambda: client,
     )
 
-    expected = cfg.tts_padding_bonus + gen_tts.BRAINROT_PADDING_DELTA
-    assert client.calls[0]["setup"]["json_config"]["padding_bonus"] == expected
+    # ffmpeg atempo is exact on tone-free silence; brainrot is config.brainrot_speed.
+    expected_duration = 4.0 / cfg.brainrot_speed
+    assert result["duration"] == pytest.approx(expected_duration, abs=0.1)
+    # Timestamps must be rescaled by the same factor.
+    assert result["timestamps"][1]["end"] == pytest.approx(4.0 / cfg.brainrot_speed, abs=0.01)
 
 
-def test_gen_tts_default_padding_bonus_when_not_brainrot(tmp_path: Path) -> None:
+def test_gen_tts_normal_mode_speeds_up_audio_and_timestamps(tmp_path: Path) -> None:
     from backend.video_generation.config import config as cfg
 
-    wav = _make_wav_bytes(duration_s=1.0)
-    client = _FakeClient(wav)
+    wav = _make_wav_bytes(duration_s=2.2)
+    segments = [_FakeSegment(text="hi", start_s=0.0, stop_s=2.2)]
+    client = _FakeClient(wav, segments=segments)
     out = tmp_path / "speech.wav"
 
-    gen_tts.gen_tts(text="hi", out=out, voice_id="v", client_factory=lambda: client)
-    assert client.calls[0]["setup"]["json_config"]["padding_bonus"] == cfg.tts_padding_bonus
+    result = gen_tts.gen_tts(
+        text="hi", out=out, voice_id="v", client_factory=lambda: client,
+    )
+
+    expected_duration = 2.2 / cfg.tts_speed
+    assert result["duration"] == pytest.approx(expected_duration, abs=0.1)
+    assert result["timestamps"][0]["end"] == pytest.approx(2.2 / cfg.tts_speed, abs=0.01)
 
 
 def test_gen_tts_requires_voice_id(tmp_path: Path) -> None:
@@ -271,7 +289,9 @@ def factory():
         capture_output=True,
         text=True,
     )
+    from backend.video_generation.config import config as cfg
+
     data = json.loads(proc.stdout.strip())
     assert data["path"] == str(out)
-    assert abs(data["duration"] - 0.5) < 0.01
+    assert data["duration"] == pytest.approx(0.5 / cfg.tts_speed, abs=0.1)
     assert out.is_file()

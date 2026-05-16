@@ -1,42 +1,20 @@
-"""Build and render subtitle cues from speech entries.
+"""Build subtitle cues from speech entries and serialize them to SRT.
 
-The Gradium TTS endpoint returns text segments with timestamps (typically
-word-level). We turn those into compact readable cues and render each as a
-transparent PNG that `stitch` overlays onto the video at the right time.
-
-We render PNGs ourselves rather than relying on ffmpeg's `subtitles=` / `ass`
-filter because the system ffmpeg here is not built with libass / libfreetype.
-A single `overlay` filter (which is always available) plus a small Pillow
-render covers the same ground.
+The TTS step returns word-level timestamps for every narration line. We group
+those into compact readable cues and emit a standard `.srt` file next to the
+final MP4 so downstream players / app code can render subtitles however they
+like (we no longer burn them into the video ourselves).
 """
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
-from pathlib import Path
-
-from PIL import Image, ImageDraw, ImageFont
 
 from .validate_script import SpeechEntry
 
 # Cue grouping limits. Tuned for 9:16 portrait at ~15-second narration density.
 MAX_CUE_CHARS = 36
 MAX_CUE_DURATION = 2.5  # seconds
-
-# Visual style.
-_FONT_DIR = Path(__file__).resolve().parents[1] / "assets" / "fonts"
-FRAUNCES_VF = _FONT_DIR / "Fraunces-VF.ttf"
-
-FONT_CANDIDATES = [
-    str(FRAUNCES_VF),
-    "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
-    "/System/Library/Fonts/Supplemental/Arial.ttf",
-    "/System/Library/Fonts/Helvetica.ttc",
-    "/Library/Fonts/Arial.ttf",
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-]
 
 
 @dataclass
@@ -97,109 +75,27 @@ def build_cues(speeches: list[SpeechEntry]) -> list[Cue]:
     return sorted(cues, key=lambda c: c.start)
 
 
-def _find_font_path() -> str | None:
-    for p in FONT_CANDIDATES:
-        if os.path.exists(p):
-            return p
-    return None
+def _format_srt_time(seconds: float) -> str:
+    if seconds < 0:
+        seconds = 0.0
+    total_ms = int(round(seconds * 1000))
+    ms = total_ms % 1000
+    total_s = total_ms // 1000
+    s = total_s % 60
+    total_m = total_s // 60
+    m = total_m % 60
+    h = total_m // 60
+    return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
 
 
-def _wrap_text(text: str, font: ImageFont.FreeTypeFont, max_width: int) -> list[str]:
-    words = text.split()
-    if not words:
-        return [""]
-    lines: list[str] = []
-    cur: list[str] = []
-    for w in words:
-        trial = " ".join([*cur, w])
-        if font.getlength(trial) <= max_width or not cur:
-            cur.append(w)
-        else:
-            lines.append(" ".join(cur))
-            cur = [w]
-    if cur:
-        lines.append(" ".join(cur))
-    return lines
+def build_srt(cues: list[Cue]) -> str:
+    """Serialize cues into a SubRip (.srt) string.
 
-
-def _load_font(font_path: str | None, font_size: int) -> ImageFont.ImageFont:
-    """Load the subtitle font. If it's the bundled Fraunces variable font,
-    lock the weight axis to Bold (700) so it doesn't default to Black.
+    Returns "" if the input list is empty.
     """
-    if not font_path:
-        return ImageFont.load_default()
-    font = ImageFont.truetype(font_path, font_size)
-    if font_path.endswith("Fraunces-VF.ttf"):
-        # Axes order in this VF: Optical Size, Weight, Softness, Wonky.
-        # opsz≈font_size matches the font's optical-size design grid.
-        opsz = max(9, min(font_size, 144))
-        try:
-            font.set_variation_by_axes([opsz, 700, 0, 0])
-        except Exception:
-            pass
-    return font
-
-
-def render_cue_png(cue: Cue, out_path: Path, video_w: int, video_h: int) -> tuple[int, int]:
-    """Render one cue as a transparent RGBA PNG sized to fit the text.
-
-    The cartridge is sized to the *actual* rendered glyph bbox so the text is
-    visually centred — relying on font line metrics alone leaves an uneven gap
-    between glyph caps and the top of the box.
-
-    Returns (png_width, png_height).
-    """
-    font_path = _find_font_path()
-    font_size = max(24, int(round(video_h * 0.052)))
-    font = _load_font(font_path, font_size)
-
-    pad_x = max(16, int(font_size * 0.55))
-    pad_y = max(10, int(font_size * 0.32))
-    line_spacing = max(2, font_size // 6)
-    stroke = max(1, font_size // 14)
-    max_text_width = max(100, video_w - 2 * pad_x - 40)
-
-    lines = _wrap_text(cue.text, font, max_text_width)
-    line_widths = [font.getbbox(line)[2] - font.getbbox(line)[0] for line in lines]
-
-    # 1) render text onto an oversized transparent canvas.
-    margin = stroke + max(font_size, 8)
-    canvas_w = max(line_widths) + 2 * margin
-    canvas_h = len(lines) * font_size + (len(lines) - 1) * line_spacing + 2 * margin
-    text_canvas = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
-    tdraw = ImageDraw.Draw(text_canvas)
-    y = margin
-    for line, w in zip(lines, line_widths):
-        x = (canvas_w - w) // 2
-        tdraw.text(
-            (x, y),
-            line,
-            font=font,
-            fill=(255, 255, 255, 255),
-            stroke_width=stroke,
-            stroke_fill=(0, 0, 0, 255),
+    blocks: list[str] = []
+    for i, c in enumerate(cues, start=1):
+        blocks.append(
+            f"{i}\n{_format_srt_time(c.start)} --> {_format_srt_time(c.end)}\n{c.text}\n"
         )
-        y += font_size + line_spacing
-
-    # 2) crop to the actual ink so the cartridge wraps the glyphs evenly.
-    ink_bbox = text_canvas.getbbox()
-    if ink_bbox is None:
-        ink_bbox = (0, 0, canvas_w, canvas_h)
-    text_img = text_canvas.crop(ink_bbox)
-    text_w, text_h = text_img.size
-
-    # 3) build the cartridge with uniform padding around the cropped glyphs.
-    box_w = text_w + 2 * pad_x
-    box_h = text_h + 2 * pad_y
-    img = Image.new("RGBA", (box_w, box_h), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(img)
-    draw.rounded_rectangle(
-        (0, 0, box_w - 1, box_h - 1),
-        radius=max(6, font_size // 4),
-        fill=(0, 0, 0, 160),
-    )
-    img.alpha_composite(text_img, (pad_x, pad_y))
-
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    img.save(out_path)
-    return box_w, box_h
+    return "\n".join(blocks)

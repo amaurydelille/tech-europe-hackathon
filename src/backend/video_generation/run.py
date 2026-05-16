@@ -51,6 +51,7 @@ def _build_prompt(workspace: Workspace, target_duration_seconds: int) -> str:
     tools_src = REPO_ROOT / "src" / "backend" / "video_generation" / "tools"
     lesson_path = workspace.inputs_dir / "lesson.md"
     final_path = workspace.outputs_dir / "final.mp4"
+    final_srt_path = workspace.outputs_dir / "final.srt"
     venv_python = REPO_ROOT / ".venv" / "bin" / "python"
     return (
         f"{instructions}\n\n"
@@ -59,7 +60,7 @@ def _build_prompt(workspace: Workspace, target_duration_seconds: int) -> str:
         f"do not assume a particular working directory.\n\n"
         f"- Workspace root: `{workspace.root}` — **this is your only write zone.**\n"
         f"- Lesson file: `{lesson_path}`\n"
-        f"- Final output: `{final_path}`\n"
+        f"- Final outputs: `{final_path}` and `{final_srt_path}` (both must exist).\n"
         f"- Assets directory (refs/audio/video/image and `script.json` go here): "
         f"`{workspace.assets_dir}`\n"
         f"- Target total duration: ~{target_duration_seconds} seconds.\n"
@@ -71,7 +72,7 @@ def _build_prompt(workspace: Workspace, target_duration_seconds: int) -> str:
         f"Do NOT use `uv run` — multiple `uv run` calls in parallel serialize on a "
         f"shared project lock. The venv at `{venv_python.parent.parent}` already has every "
         f"dependency installed.\n"
-        f"- When done, print `{final_path}` and stop.\n\n"
+        f"- When done, print `{final_path}` and `{final_srt_path}` and stop.\n\n"
         f"## Scope of this run\n\n"
         f"Ignore every sibling directory under `{workspace.root.parent}` — even if a "
         f"previous run covered the same lesson, do not read or reuse anything from it. "
@@ -138,9 +139,15 @@ def generate_video(
         raise RuntimeError(f"codex exec failed with code {proc.returncode}")
 
     produced = workspace.outputs_dir / "final.mp4"
+    produced_srt = workspace.outputs_dir / "final.srt"
     if not produced.is_file():
         raise RuntimeError(
             f"codex finished but no final video at {produced}. "
+            f"See {workspace.root / 'codex.last_message.txt'} for the agent's last message."
+        )
+    if not produced_srt.is_file():
+        raise RuntimeError(
+            f"codex finished but no subtitles at {produced_srt}. "
             f"See {workspace.root / 'codex.last_message.txt'} for the agent's last message."
         )
 
@@ -148,6 +155,7 @@ def generate_video(
         out_path = Path(out_path)
         out_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(produced, out_path)
+        shutil.copy2(produced_srt, out_path.with_suffix(".srt"))
         return out_path
     return produced
 
