@@ -20,9 +20,10 @@ When `outputs/final.mp4` exists and is valid, print the absolute path to that fi
 2. **Anchors first, always.** Before generating any video or still that depicts a recurring subject, character, or location, generate a *reference image* for it. Save these in `assets/refs/`. Every later `gen_video` call must pass `--image <ref>`, and every later `gen_image` call that depicts an anchor must pass `--ref <ref>`.
 3. **Anchor reuse.** If two shots feature the same subject (e.g. "Julius Caesar", "the Rubicon riverbank"), they must reference the *same* anchor image file. Do not regenerate a new reference for the same subject.
 4. **Speech is verbatim narration that you write yourself**, derived from the lesson. Split the lesson into short narration lines (~1–3 sentences each). Each speech line becomes one `gen_tts` call.
-5. **Durations from tools, not from your head.** A speech line's duration is whatever Gradium returns. A video clip's duration is whatever Seedance returns (probed from the file). Always set the `start`/`end`/`duration` fields in `script.json` from tool outputs.
-6. **Visuals cover the entire video.** The video and image entries in `script.json` must cover `[0, total_duration]` with no gaps and no overlaps. The audio (speech) sits on top of this visual track.
-7. **No silent fallback.** If any tool call fails, fix the cause (rephrase the prompt, choose a different anchor, etc.) and retry. Do not skip an entry.
+5. **Match picture to words.** The visual playing during each speech line must depict what that line describes.
+6. **Durations from tools, not from your head.** A speech line's duration is whatever Gradium returns. A video clip's duration is whatever Seedance returns (probed from the file). Always set the `start`/`end`/`duration` fields in `script.json` from tool outputs.
+7. **Visuals cover the entire video.** The video and image entries in `script.json` must cover `[0, total_duration]` with no gaps and no overlaps. The audio (speech) sits on top of this visual track.
+8. **No silent fallback.** If any tool call fails, fix the cause (rephrase the prompt, choose a different anchor, etc.) and retry. Do not skip an entry.
 
 ## Pipeline (follow in order)
 
