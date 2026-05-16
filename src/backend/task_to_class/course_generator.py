@@ -17,8 +17,6 @@ Never write phrases like "according to", "as mentioned in", "the source says", "
 The [N] citation markers are silent — they exist for the parser only. The reader must never feel like they are reading a research report."""
 
 _FULL_COURSE_SCHEMA = """
-# {{Course Title}}
-
 ## Introduction
 {{Vivid opening paragraph — set the scene, hook the student}}
 
@@ -36,8 +34,6 @@ _FULL_COURSE_SCHEMA = """
 """.strip()
 
 _CONDENSED_COURSE_SCHEMA = """
-# {{Course Title}}
-
 ## {{Section title — freely chosen to fit the content}}
 {{2-4 sentences of substantive content for this section}}
 
@@ -125,7 +121,16 @@ Based on the current course, suggest the single most logical next course the stu
 
 Wrap it between these exact markers:
 `===NEXT_CHAPTER_START===`
-`===NEXT_CHAPTER_END===`"""
+`===NEXT_CHAPTER_END===`
+
+---
+
+### COURSE TITLE
+A concise title for the current course. Maximum 10 words. No punctuation at the end.
+
+Wrap it between these exact markers:
+`===COURSE_TITLE_START===`
+`===COURSE_TITLE_END===`"""
 
 
 def _format_sources(results: list[ValidatedResult]) -> str:
@@ -177,6 +182,7 @@ def generate_course(
     ]
 
     return CourseOutput(
+        course_title=_extract_section(raw, "===COURSE_TITLE_START===", "===COURSE_TITLE_END==="),
         full_markdown=_extract_section(raw, "===FULL_COURSE_START===", "===FULL_COURSE_END==="),
         condensed_markdown=_extract_section(raw, "===CONDENSED_COURSE_START===", "===CONDENSED_COURSE_END==="),
         next_chapter=_extract_section(raw, "===NEXT_CHAPTER_START===", "===NEXT_CHAPTER_END==="),

@@ -32,6 +32,7 @@ class Reference(BaseModel):
 
 
 class CourseOutput(BaseModel):
+    course_title: str
     full_markdown: str
     condensed_markdown: str
     references: list[Reference]
