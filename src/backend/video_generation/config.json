@@ -1,0 +1,39 @@
+{
+  "voices": [
+    {
+      "id": "YTpq7expH9539ERJ",
+      "name": "default",
+      "description": "neutral, clear delivery; good for medical, scientific, or modern explanatory lessons",
+      "wps": 2.95
+    },
+    {
+      "id": "Z5GIOZR45ieZ8M-W",
+      "name": "Patrick",
+      "description": "smooth deep male voice; good for storytelling, history, biography, narrative-heavy lessons",
+      "wps": 3.27
+    },
+    {
+      "id": "Ve1zknlflaRwcAQw",
+      "name": "Aaron",
+      "description": "composed and smooth British adult voice; perfect for technical and IT-related explanations",
+      "wps": 2.98
+    },
+    {
+      "id": "fggSYM_FGJ30QTTl",
+      "name": "Brianna",
+      "description": "warm and smooth American young adult voice; ideal for music radio and educational content (good fit for fast-paced 'brainrot' style)",
+      "wps": 2.78
+    }
+  ],
+  "resolution": "480p",
+  "aspect": "9:16",
+  "target_duration_seconds": 30,
+  "real_video_time_share": 0.5,
+  "tts_speed": 1.1,
+  "brainrot_speed": 1.5,
+  "models": {
+    "seedance": "bytedance/seedance-2.0/image-to-video",
+    "seedream_text_to_image": "fal-ai/bytedance/seedream/v4/text-to-image",
+    "seedream_edit": "fal-ai/bytedance/seedream/v4/edit"
+  }
+}

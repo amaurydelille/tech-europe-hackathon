@@ -7,14 +7,16 @@ load_dotenv()
 
 _client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY", "placeholder"))
 
-_SYSTEM_PROMPT = """You are an expert educational content writer.
+_SYSTEM_PROMPT = """You are an expert educational content writer and historian.
 You create personalized, engaging courses tailored to a student's level and goals.
 You will produce TWO versions of the course in a single response, each enclosed in its markers.
-You MUST follow the exact markdown structure specified — a parser will process your output programmatically."""
+You MUST follow the exact markdown structure specified — a parser will process your output programmatically.
+
+CRITICAL RULE: Write in pure narrative voice at all times. Never acknowledge that you are using sources.
+Never write phrases like "according to", "as mentioned in", "the source says", "referring to source", "based on the provided material", or any similar meta-reference.
+The [N] citation markers are silent — they exist for the parser only. The reader must never feel like they are reading a research report."""
 
 _FULL_COURSE_SCHEMA = """
-# {{Course Title}}
-
 ## Introduction
 {{Vivid opening paragraph — set the scene, hook the student}}
 
@@ -32,8 +34,6 @@ _FULL_COURSE_SCHEMA = """
 """.strip()
 
 _CONDENSED_COURSE_SCHEMA = """
-# {{Course Title}}
-
 ## {{Section title — freely chosen to fit the content}}
 {{2-4 sentences of substantive content for this section}}
 
@@ -68,6 +68,7 @@ Using the source material above, generate TWO versions of the course adapted to 
 - Place an inline citation marker `[N]` immediately after every sentence or fact drawn from that source.
 - Every factual claim must have at least one `[N]`. A sentence can have multiple: `[1][3]`.
 - Apply citations in BOTH versions.
+- NEVER mention the sources in the text. No "according to", "source 1 says", "as noted in", or any meta-reference. The [N] markers are invisible to the reader — they are silent footnotes only.
 
 ---
 
@@ -120,7 +121,16 @@ Based on the current course, suggest the single most logical next course the stu
 
 Wrap it between these exact markers:
 `===NEXT_CHAPTER_START===`
-`===NEXT_CHAPTER_END===`"""
+`===NEXT_CHAPTER_END===`
+
+---
+
+### COURSE TITLE
+A concise title for the current course. Maximum 10 words. No punctuation at the end.
+
+Wrap it between these exact markers:
+`===COURSE_TITLE_START===`
+`===COURSE_TITLE_END===`"""
 
 
 def _format_sources(results: list[ValidatedResult]) -> str:
@@ -172,6 +182,7 @@ def generate_course(
     ]
 
     return CourseOutput(
+        course_title=_extract_section(raw, "===COURSE_TITLE_START===", "===COURSE_TITLE_END==="),
         full_markdown=_extract_section(raw, "===FULL_COURSE_START===", "===FULL_COURSE_END==="),
         condensed_markdown=_extract_section(raw, "===CONDENSED_COURSE_START===", "===CONDENSED_COURSE_END==="),
         next_chapter=_extract_section(raw, "===NEXT_CHAPTER_START===", "===NEXT_CHAPTER_END==="),
