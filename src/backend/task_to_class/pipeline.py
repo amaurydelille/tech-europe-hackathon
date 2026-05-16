@@ -35,7 +35,7 @@ def run(onboarding_data: dict) -> CourseOutput:
     for r in validated_results:
         log.info("  ✓ [score=%.3f, entities=%d] %s", r.relevance_score, r.entity_count, r.title)
 
-    log.info("Step 4/4 — Generating course via GPT-4o...")
+    log.info("Step 4/4 — Generating course via GPT-5.5...")
     course = generate_course(onboarding, validated_results)
     log.info("Course generated — full: %d chars, condensed: %d chars",
              len(course.full_markdown), len(course.condensed_markdown))

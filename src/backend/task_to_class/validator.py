@@ -1,42 +1,54 @@
+import re
 import logging
-from gliner import GLiNER
+from gliner2 import GLiNER2
 from .models import ScrapedResult, ValidatedResult
 
 log = logging.getLogger(__name__)
 
 _LABELS = ["person", "event", "date", "location", "organization", "concept", "battle", "country"]
-_CHUNK_SIZE = 400  # words per chunk to stay within GLiNER token limits
+_CHUNK_MAX_WORDS = 200
 _MIN_ENTITIES = 3
 _TOP_K = 5
 
-_model: GLiNER | None = None
+_model: GLiNER2 | None = None
 
 
-def _get_model() -> GLiNER:
+def _get_model() -> GLiNER2:
     global _model
     if _model is None:
-        log.info("Loading GLINER model (first time only)...")
-        _model = GLiNER.from_pretrained("urchade/gliner_mediumv2.1")
-        log.info("GLINER model ready")
+        log.info("Loading GLiNER2 model (first time only)...")
+        _model = GLiNER2.from_pretrained("fastino/gliner2-base-v1")
+        log.info("GLiNER2 model ready")
     return _model
 
 
 def _chunk_text(text: str) -> list[str]:
-    words = text.split()
-    return [
-        " ".join(words[i:i + _CHUNK_SIZE])
-        for i in range(0, len(words), _CHUNK_SIZE)
-    ]
+    sentences = re.split(r'(?<=[.!?])\s+', text)
+    chunks, current, current_words = [], [], 0
+
+    for sentence in sentences:
+        word_count = len(sentence.split())
+        if current_words + word_count > _CHUNK_MAX_WORDS and current:
+            chunks.append(" ".join(current))
+            current, current_words = [], 0
+        current.append(sentence)
+        current_words += word_count
+
+    if current:
+        chunks.append(" ".join(current))
+
+    return chunks
 
 
-def _extract_entities(text: str) -> list[dict]:
+def _extract_entity_count(text: str) -> int:
     model = _get_model()
     chunks = _chunk_text(text)
-    all_entities = []
+    total = 0
     for chunk in chunks:
-        entities = model.predict_entities(chunk, _LABELS)
-        all_entities.extend(entities)
-    return all_entities
+        result = model.extract_entities(chunk, _LABELS)
+        # result = {'entities': {'person': [...], 'location': [...], ...}}
+        total += sum(len(v) for v in result.get("entities", {}).values())
+    return total
 
 
 def validate_with_gliner(
@@ -50,14 +62,12 @@ def validate_with_gliner(
             log.debug("Skipping empty result: %s", result.title)
             continue
 
-        entities = _extract_entities(result.content)
-        entity_count = len(entities)
+        entity_count = _extract_entity_count(result.content)
 
         if entity_count < _MIN_ENTITIES:
             log.debug("Rejected (only %d entities): %s", entity_count, result.title)
             continue
 
-        # score = tavily relevance + normalized entity density
         word_count = max(len(result.content.split()), 1)
         entity_density = entity_count / (word_count / 100)
         relevance_score = result.score + (entity_density * 0.1)

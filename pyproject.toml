@@ -8,7 +8,7 @@ dependencies = [
     "openai-agents>=0.17.2",
     "openai>=1.30.0",
     "tavily-python>=0.3.0",
-    "gliner>=0.2.0",
+    "gliner2[local]",
     "pydantic>=2.0.0",
     "fastapi>=0.111.0",
     "uvicorn[standard]>=0.29.0",

@@ -25,6 +25,13 @@ class ValidatedResult(BaseModel):
     relevance_score: float
 
 
+class Reference(BaseModel):
+    id: int
+    title: str
+    url: str
+
+
 class CourseOutput(BaseModel):
     full_markdown: str
     condensed_markdown: str
+    references: list[Reference]
