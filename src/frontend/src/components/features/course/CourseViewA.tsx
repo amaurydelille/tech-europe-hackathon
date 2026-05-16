@@ -999,7 +999,16 @@ export function CourseViewA({ course }: { course: ParsedCourse }) {
   const handleWheel = useCallback((e: React.WheelEvent) => {
     if (Date.now() - lastPhaseChange.current < 350) return;
     const cur = phaseRef.current;
-    if (cur === "reading") return;
+
+    // When already at the top of the article, an upward wheel gesture should
+    // always reopen the video, even if we didn't settle into "pivot" yet.
+    if (cur === "reading") {
+      if (e.deltaY < 0 && (articleRef.current?.scrollTop ?? 0) <= 1) {
+        changePhase("video");
+      }
+      return;
+    }
+
     if (cur === "video" && e.deltaY > 0) { changePhase("reading"); return; }
     if (cur === "pivot" && e.deltaY > 0) { changePhase("reading"); return; }
     if (cur === "pivot" && e.deltaY < 0) { changePhase("video"); return; }
@@ -1010,7 +1019,7 @@ export function CourseViewA({ course }: { course: ParsedCourse }) {
     if (Date.now() - lastPhaseChange.current < 350) return;
     const el = e.currentTarget;
     const scrollTop = el.scrollTop;
-    if (scrollTop === 0 && phaseRef.current === "reading") {
+    if (scrollTop <= 1 && phaseRef.current === "reading") {
       phaseRef.current = "pivot";
       setPhase("pivot");
     }
