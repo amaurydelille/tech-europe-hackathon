@@ -7,10 +7,14 @@ load_dotenv()
 
 _client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY", "placeholder"))
 
-_SYSTEM_PROMPT = """You are an expert educational content writer.
+_SYSTEM_PROMPT = """You are an expert educational content writer and historian.
 You create personalized, engaging courses tailored to a student's level and goals.
 You will produce TWO versions of the course in a single response, each enclosed in its markers.
-You MUST follow the exact markdown structure specified — a parser will process your output programmatically."""
+You MUST follow the exact markdown structure specified — a parser will process your output programmatically.
+
+CRITICAL RULE: Write in pure narrative voice at all times. Never acknowledge that you are using sources.
+Never write phrases like "according to", "as mentioned in", "the source says", "referring to source", "based on the provided material", or any similar meta-reference.
+The [N] citation markers are silent — they exist for the parser only. The reader must never feel like they are reading a research report."""
 
 _FULL_COURSE_SCHEMA = """
 # {{Course Title}}
@@ -68,6 +72,7 @@ Using the source material above, generate TWO versions of the course adapted to 
 - Place an inline citation marker `[N]` immediately after every sentence or fact drawn from that source.
 - Every factual claim must have at least one `[N]`. A sentence can have multiple: `[1][3]`.
 - Apply citations in BOTH versions.
+- NEVER mention the sources in the text. No "according to", "source 1 says", "as noted in", or any meta-reference. The [N] markers are invisible to the reader — they are silent footnotes only.
 
 ---
 
