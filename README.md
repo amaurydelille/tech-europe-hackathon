@@ -12,11 +12,9 @@ Three pipelines power the experience:
 
 https://github.com/user-attachments/assets/2512331b-4fa4-4fb8-bf2a-16049167ac46
 
-<img width="1699" height="847" alt="image" src="https://github.com/user-attachments/assets/6076c70f-cfdf-4db6-bbf4-412a9a28b3eb" />
-
-
-
 ---
+
+<img width="1710" height="891" alt="image" src="https://github.com/user-attachments/assets/39c98590-3ecb-4578-8085-4ca592c55654" />
 
 ## Repository layout
 
