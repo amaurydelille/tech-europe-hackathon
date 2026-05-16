@@ -94,7 +94,7 @@ export function ChatFlow() {
       // ignore request errors
     }
 
-    router.push("/course/37dade8e-7ad7-4443-8da0-aabaef5f0ec7");
+    router.push("/course/attention");
   }, [router]);
 
   return (

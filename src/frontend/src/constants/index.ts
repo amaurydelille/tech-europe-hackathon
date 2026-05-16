@@ -5,6 +5,7 @@ export const ONBOARDING_WS_URL =
 
 export const ROUTES = {
   HOME: "/",
+  FEED: "/feed",
   ONBOARDING: "/onboarding",
   CHAT: "/chat",
   GENERATE: "/generate",
