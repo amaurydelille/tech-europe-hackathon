@@ -99,7 +99,7 @@ Read the JSON output to learn the true `duration` and use it when placing the sp
 
 **Minimum real video.** Every run must include a certain amount (check the proportion written below) of `gen_video` clips, and each one must earn the cost — pick a moment with motion that an animated still can't fake, and prompt for that motion explicitly. If the clip could be replaced by an `animate_image` without anyone noticing, it's the wrong shot.
 
-**Time budget for real video.** The total wall-time of your `gen_video` clips should be **~{{REAL_VIDEO_PERCENT}}% of the target video duration** (about **{{REAL_VIDEO_SECONDS}} seconds** of real-video footage in this run). Spend that budget on the shots where motion most carries the narrative; cover everything else with `animate_image`. Going over the budget is fine only if a shot genuinely cannot be staged any other way.
+**Time budget for real video.** The total wall-time of your `gen_video` clips should be **~{{REAL_VIDEO_PERCENT}}% of the target video duration** (about **{{REAL_VIDEO_SECONDS}} seconds** of real-video footage in this run). Spend that budget on the shots where motion most carries the narrative; cover everything else with `animate_image`. Going over budget is not that much of an issue if worth it.
 
 **Keep individual clips short.** 5 seconds is enough for almost every beat — if you want a longer shot, prefer **two 5-second clips with different framings** (wide → close-up, or alternate angles) rather than one 10-second take. This is faster to generate and reads better cinematically.
 
