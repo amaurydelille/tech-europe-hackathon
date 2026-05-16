@@ -71,7 +71,7 @@ export function VoiceView({ mode, amplitude, onEnd }: VoiceViewProps) {
         style={{
           display: "flex",
           justifyContent: "center",
-          paddingTop: 18,
+          paddingTop: 72,
           position: "relative",
           zIndex: 2,
         }}

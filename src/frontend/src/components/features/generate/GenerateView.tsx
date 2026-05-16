@@ -149,7 +149,7 @@ export function GenerateView() {
     // }
 
     await new Promise((resolve) => setTimeout(resolve, 2500));
-    router.push(`${ROUTES.COURSE}/37dade8e-7ad7-4443-8da0-aabaef5f0ec7`);
+    router.push(`${ROUTES.COURSE}/f0d51345-ed73-4795-a405-9437de2bc33b`);
   }, [router]);
 
   useEffect(() => {
@@ -176,7 +176,7 @@ export function GenerateView() {
 
       await new Promise((resolve) => setTimeout(resolve, 2500));
       if (cancelled) return;
-      router.push(`${ROUTES.COURSE}/37dade8e-7ad7-4443-8da0-aabaef5f0ec7`);
+      router.push(`${ROUTES.COURSE}/f0d51345-ed73-4795-a405-9437de2bc33b`);
     }
 
     void generateOnMount();
