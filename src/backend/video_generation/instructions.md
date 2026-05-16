@@ -10,9 +10,10 @@ You are the director of a short, polished educational video. Your output is a si
 
 - `outputs/final.mp4` — the finished video (no burned-in subtitles).
 - `outputs/final.srt` — SubRip subtitle file for the narration (consumed by the app, not muxed into the MP4).
+- `outputs/final_sources.json` — citation list mapping each cited source to the absolute timestamp it surfaces in the video (consumed by the frontend to display links in sync with the narration).
 - `assets/script.json` — the timestamped script you authored (kept for reproducibility).
 
-When both `outputs/final.mp4` and `outputs/final.srt` exist and are valid, print their absolute paths and stop.
+When `outputs/final.mp4`, `outputs/final.srt`, and `outputs/final_sources.json` all exist and are valid, print their absolute paths and stop.
 
 ## Hard rules (read carefully)
 
@@ -90,6 +91,16 @@ uv run python -m backend.video_generation.tools.gen_tts \
 ```
 
 Read the JSON output to learn the true `duration` and use it when placing the speech in `script.json`. The output also includes a `timestamps` array — segment timings produced by the TTS engine (typically word- or phrase-level), each item shaped `{"text": ..., "start": ..., "end": ...}` with times in seconds **relative to the start of this speech audio**. **You MUST copy that array verbatim into the matching speech entry's `timestamps` field** in `script.json`. The stitcher requires this field on every speech entry and will reject the script if it is missing or empty — there is no fallback. The timestamps drive the `outputs/final.srt` subtitle file that `stitch` writes alongside the MP4.
+
+**Sources (citations).** If `inputs/lesson.md` contains URL references — inline markdown links, a "Sources" / "References" / "Bibliography" section, footnotes — extract them and attach each one to the speech entries that actually cite it. On each `SpeechEntry` in `script.json` you may add an optional `sources` array of `{"name": "<short label>", "url": "<canonical URL>"}` objects. Rules:
+
+- One source entry per fact the line cites; if a line uses two sources, list both.
+- `name` is short and human-readable (a page title, "Wikipedia — <article>", a paper short cite); the frontend renders it as link text.
+- `url` is taken **verbatim** from the lesson. Do not invent URLs.
+- A line that paraphrases the lesson but cites no specific source should omit `sources` (or set it to `[]`).
+- The same URL can appear on multiple lines — that's expected when the same source covers several narration beats.
+
+`stitch` reads these and emits `outputs/final_sources.json` with one `{name, url, timestamp}` row per (line × source), where `timestamp` is the absolute second the citing line starts in the final video.
 
 ### Step 6 — Generate visuals (anchored)
 
@@ -179,7 +190,10 @@ Build the final script with this exact shape:
       "audio_path": "assets/audio/sNNN.wav",
       "timestamps": [
         {"text": "<segment text>", "start": <float, relative to audio>, "end": <float, relative to audio>}
-      ]   // required, non-empty — copy verbatim from gen_tts JSON output
+      ],  // required, non-empty — copy verbatim from gen_tts JSON output
+      "sources": [
+        {"name": "<short label>", "url": "<canonical URL>"}
+      ]   // optional; one entry per source this line cites (see "Sources" below)
     },
     {
       "kind": "video",
@@ -213,14 +227,14 @@ Rules:
 ```
 uv run python -m backend.video_generation.tools.stitch \
     --script assets/script.json \
-    --out outputs/final.mp4
+    --out-dir outputs
 ```
 
-This tool validates the script internally and refuses to run on an invalid one. It writes the MP4 to `--out` **and** a SubRip subtitle file at the matching `.srt` path (e.g. `--out outputs/final.mp4` produces `outputs/final.srt` alongside). If it errors, read the error message, fix `script.json` (or regenerate the offending asset), and re-run.
+`stitch` validates the script and writes `final.mp4`, `final.srt`, and `final_sources.json` into `--out-dir`. On error it prints the cause — fix `script.json` (or regenerate the offending asset) and re-run.
 
 ### Step 9 — Done
 
-Print the absolute paths to `outputs/final.mp4` and `outputs/final.srt`, then stop.
+Print the absolute paths to `outputs/final.mp4`, `outputs/final.srt`, and `outputs/final_sources.json`, then stop.
 
 ## Tool reference (authoritative)
 
@@ -232,7 +246,7 @@ The table below is the complete contract for every tool. **Do not read the tool 
 | `gen_video` | Generate a **silent** 5s or 10s clip from a reference image (real motion, image-to-video). Slow (1–3 min/call). Samples 2 fps frames for inspection. | `--prompt`, `--image`, `--duration` (5 or 10), `--out`; optional `--resolution` (480p/720p/1080p), `--aspect`, `--seed` | `{path, duration, frame_paths, model, seed}` |
 | `animate_image` | Turn a still into a short clip with a slow Ken-Burns-style zoom. Pure ffmpeg, ~1 second per call. **Prefer this over `gen_video` whenever you don't need true motion.** | `--image`, `--duration`, `--out`; optional `--zoom-from`, `--zoom-to`, `--resolution`, `--aspect` | `{path, duration}` |
 | `gen_tts` | Synthesize one narration line (text-to-speech). Also returns segment-level timestamps for subtitle rendering. | `--text`, `--voice-id`, `--out`; optional `--brainrot-mode` (faster delivery) | `{path, duration, sample_rate, timestamps: [{text, start, end}, ...]}` |
-| `stitch` | Validate the script and mux all assets into the final MP4 with audio mix. Also writes a SubRip subtitle file at the same path with a `.srt` extension, built from each speech entry's `timestamps`. | `--script`, `--out` | `{path, srt_path, duration, subtitle_cues}` |
+| `stitch` | Validate the script, mux all assets into the final MP4, and write subtitles + sources alongside. | `--script`, `--out-dir` | `{video_path, srt_path, sources_path, duration, subtitle_cues}` |
 
 All tools print a single JSON line to stdout; non-zero exit means failure (error on stderr).
 

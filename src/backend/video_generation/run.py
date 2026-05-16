@@ -52,6 +52,7 @@ def _build_prompt(workspace: Workspace, target_duration_seconds: int) -> str:
     lesson_path = workspace.inputs_dir / "lesson.md"
     final_path = workspace.outputs_dir / "final.mp4"
     final_srt_path = workspace.outputs_dir / "final.srt"
+    final_sources_path = workspace.outputs_dir / "final_sources.json"
     venv_python = REPO_ROOT / ".venv" / "bin" / "python"
     return (
         f"{instructions}\n\n"
@@ -62,6 +63,7 @@ def _build_prompt(workspace: Workspace, target_duration_seconds: int) -> str:
         f"- Assets directory (refs/audio/video/image and `script.json`): `{workspace.assets_dir}`\n"
         f"- Final video: `{final_path}`\n"
         f"- Final subtitles: `{final_srt_path}`\n"
+        f"- Final sources: `{final_sources_path}` (written by `stitch` from speech `sources`)\n"
         f"- Repository root: `{REPO_ROOT}` (source lives here; never modify it).\n"
         f"- Tool source: `{tools_src}` — note the `src/` prefix; do NOT look under "
         f"`{REPO_ROOT}/backend/...`.\n\n"
@@ -77,7 +79,8 @@ def _build_prompt(workspace: Workspace, target_duration_seconds: int) -> str:
         f"run covered the same lesson, do not read or reuse anything from it. Start fresh "
         f"from `inputs/lesson.md`.\n\n"
         f"### Termination\n\n"
-        f"When `{final_path}` and `{final_srt_path}` both exist, print both paths and stop.\n"
+        f"When `{final_path}`, `{final_srt_path}`, and `{final_sources_path}` all exist, "
+        f"print all three paths and stop.\n"
     )
 
 
@@ -143,22 +146,24 @@ def generate_video(
 
     produced = workspace.outputs_dir / "final.mp4"
     produced_srt = workspace.outputs_dir / "final.srt"
-    if not produced.is_file():
-        raise RuntimeError(
-            f"codex finished but no final video at {produced}. "
-            f"See {workspace.root / 'codex.last_message.txt'} for the agent's last message."
-        )
-    if not produced_srt.is_file():
-        raise RuntimeError(
-            f"codex finished but no subtitles at {produced_srt}. "
-            f"See {workspace.root / 'codex.last_message.txt'} for the agent's last message."
-        )
+    produced_sources = workspace.outputs_dir / "final_sources.json"
+    for path, label in (
+        (produced, "video"),
+        (produced_srt, "subtitles"),
+        (produced_sources, "sources"),
+    ):
+        if not path.is_file():
+            raise RuntimeError(
+                f"codex finished but no {label} at {path}. "
+                f"See {workspace.root / 'codex.last_message.txt'} for the agent's last message."
+            )
 
     if out_dir is not None:
         out_dir = Path(out_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
         shutil.copy2(produced, out_dir / "final.mp4")
         shutil.copy2(produced_srt, out_dir / "final.srt")
+        shutil.copy2(produced_sources, out_dir / "final_sources.json")
         return out_dir
     return workspace.outputs_dir
 

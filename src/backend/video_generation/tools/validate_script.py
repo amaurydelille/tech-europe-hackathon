@@ -19,6 +19,16 @@ class WordTimestamp(BaseModel):
     end: float  # seconds relative to the speech audio start
 
 
+class Source(BaseModel):
+    """A citation attached to a speech entry.
+
+    `name` is a short human-readable label (e.g. page title or "Wikipedia").
+    `url` is the canonical URL the frontend will link to.
+    """
+    name: str
+    url: str
+
+
 class SpeechEntry(BaseModel):
     kind: Literal["speech"]
     start: float
@@ -26,6 +36,7 @@ class SpeechEntry(BaseModel):
     text: str
     audio_path: str
     timestamps: list[WordTimestamp]
+    sources: list[Source] = Field(default_factory=list)
 
 
 class VideoEntry(BaseModel):

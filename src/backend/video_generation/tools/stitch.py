@@ -58,10 +58,15 @@ def _build_image_segment_filter(idx: int, target_w: int, target_h: int, dur: flo
     )
 
 
-def stitch(script_path: Path, out_path: Path) -> dict:
+def stitch(script_path: Path, out_dir: Path) -> dict:
     script_path = Path(script_path)
     script: Script = validate_script(script_path)
     script_dir = script_path.parent
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / "final.mp4"
+    srt_path = out_dir / "final.srt"
+    sources_path = out_dir / "final_sources.json"
 
     width, height = _canvas_dimensions(script.resolution, script.aspect)
 
@@ -130,26 +135,36 @@ def stitch(script_path: Path, out_path: Path) -> dict:
     subprocess.run(cmd, check=True)
 
     cues = build_cues(speeches)
-    srt_path = out_path.with_suffix(".srt")
     srt_path.write_text(build_srt(cues), encoding="utf-8")
 
     from ..ffmpeg_utils import probe_duration
+    from .sources import write_sources
+
+    write_sources(script, sources_path)
 
     return {
-        "path": str(out_path),
+        "video_path": str(out_path),
         "srt_path": str(srt_path),
+        "sources_path": str(sources_path),
         "duration": probe_duration(out_path),
         "subtitle_cues": len(cues),
     }
 
 
 def _main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Stitch script assets into final video.")
+    parser = argparse.ArgumentParser(
+        description="Stitch script assets into final.mp4 + final.srt + final_sources.json."
+    )
     parser.add_argument("--script", required=True, type=Path)
-    parser.add_argument("--out", required=True, type=Path)
+    parser.add_argument(
+        "--out-dir",
+        required=True,
+        type=Path,
+        help="Directory to write final.mp4, final.srt, final_sources.json into.",
+    )
     args = parser.parse_args(argv)
 
-    result = stitch(script_path=args.script, out_path=args.out)
+    result = stitch(script_path=args.script, out_dir=args.out_dir)
     json.dump(result, sys.stdout)
     sys.stdout.write("\n")
     return 0

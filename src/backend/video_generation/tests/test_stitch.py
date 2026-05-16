@@ -89,15 +89,19 @@ def test_stitch_video_with_speech_overlay(tmp_path: Path) -> None:
     script_path = tmp_path / "script.json"
     script_path.write_text(json.dumps(script))
 
-    out = tmp_path / "final.mp4"
-    result = stitch.stitch(script_path=script_path, out_path=out)
+    out_dir = tmp_path / "out"
+    result = stitch.stitch(script_path=script_path, out_dir=out_dir)
 
+    out = out_dir / "final.mp4"
+    srt = out_dir / "final.srt"
+    sources = out_dir / "final_sources.json"
     assert out.is_file()
-    assert result["path"] == str(out)
-    assert result["subtitle_cues"] == 1
-    srt = tmp_path / "final.srt"
     assert srt.is_file()
+    assert sources.is_file()
+    assert result["video_path"] == str(out)
     assert result["srt_path"] == str(srt)
+    assert result["sources_path"] == str(sources)
+    assert result["subtitle_cues"] == 1
     assert "hello" in srt.read_text().lower()
     assert probe_duration(out) == pytest.approx(8.0, abs=0.5)
 
@@ -150,12 +154,13 @@ def test_stitch_writes_srt_with_grouped_cues(tmp_path: Path) -> None:
     script_path = tmp_path / "script.json"
     script_path.write_text(json.dumps(script))
 
-    out = tmp_path / "final.mp4"
-    result = stitch.stitch(script_path=script_path, out_path=out)
+    out_dir = tmp_path / "out"
+    result = stitch.stitch(script_path=script_path, out_dir=out_dir)
+    out = out_dir / "final.mp4"
+    srt = out_dir / "final.srt"
 
     assert out.is_file()
     assert result["subtitle_cues"] >= 1
-    srt = tmp_path / "final.srt"
     assert srt.is_file()
     srt_text = srt.read_text()
     # SubRip format: numbered blocks separated by blank lines, timing line with `-->`.
@@ -178,4 +183,4 @@ def test_stitch_rejects_invalid_script(tmp_path: Path) -> None:
     script_path = tmp_path / "script.json"
     script_path.write_text(json.dumps(bad))
     with pytest.raises(Exception):
-        stitch.stitch(script_path=script_path, out_path=tmp_path / "out.mp4")
+        stitch.stitch(script_path=script_path, out_dir=tmp_path / "out")
