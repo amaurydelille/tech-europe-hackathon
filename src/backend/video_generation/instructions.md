@@ -171,13 +171,21 @@ The table below is the complete contract for every tool. **Do not read the tool 
 | Tool | Purpose | Required args | Output JSON |
 |---|---|---|---|
 | `gen_image` | Generate a still (anchor or scene). Uses Seedream 4 (text-to-image when no `--ref`; edit when refs supplied). | `--prompt`, `--out`; optional `--ref` (repeatable), `--aspect` | `{path, width, height, model, seed}` |
-| `gen_video` | Generate a 5s or 10s clip from a reference image. Uses Seedance 2 image-to-video. Also samples 1 fps frames you can inspect. | `--prompt`, `--image`, `--duration` (5 or 10), `--out`; optional `--resolution` (480p/720p/1080p), `--aspect`, `--seed` | `{path, duration, frame_paths, model, seed}` |
+| `gen_video` | Generate a **silent** 5s or 10s clip from a reference image. Uses Seedance 2 image-to-video with audio generation disabled. Also samples 1 fps frames you can inspect. | `--prompt`, `--image`, `--duration` (5 or 10), `--out`; optional `--resolution` (480p/720p/1080p), `--aspect`, `--seed` | `{path, duration, frame_paths, model, seed}` |
 | `gen_tts` | Synthesize one narration line via Gradium TTS. | `--text`, `--out`; optional `--voice-id` | `{path, duration, sample_rate}` |
 | `stitch` | Validate the script and mux all assets into the final MP4 with audio mix. | `--script`, `--out` | `{path, duration}` |
 
 All tools print a single JSON line to stdout; non-zero exit means failure (error on stderr).
 
 The `script.json` schema is fully specified in Step 7 below — that is the only schema you need.
+
+## Audio model
+
+The video has exactly **one audio source**: the Gradium narration from `gen_tts`. Video clips are generated silent (Seedance's `generate_audio` is forced off) and the stitcher overlays only the TTS lines onto a silent base.
+
+Implications for prompts:
+- Do not describe sound in video prompts ("the cracking of swords", "echoing footsteps"). It does nothing because audio is disabled, and "violent" sound cues are a common trigger for content-policy rejections.
+- Do not write narration lines that depend on sync to a non-existent sound effect ("listen to the legion roar"). The viewer hears only the narrator's voice and (otherwise) silence.
 
 ## Style guidance for visual prompts
 
