@@ -148,7 +148,6 @@ function VideoBlock({ isPlaying, progress, onTogglePlay, onSeek }: VideoBlockPro
           flexDirection: "column",
           gap: 10,
           background: "linear-gradient(180deg, transparent, rgba(0,0,0,0.6))",
-          pointerEvents: "none",
         }}
       >
         {/* subtitle */}
@@ -173,9 +172,20 @@ function VideoBlock({ isPlaying, progress, onTogglePlay, onSeek }: VideoBlockPro
           </div>
         )}
 
-        {/* progress bar — display only, no interaction */}
-        <div style={{ height: 3, borderRadius: 2, background: "rgba(255,255,255,0.25)", overflow: "hidden" }}>
-          <div style={{ width: `${progress * 100}%`, height: "100%", background: "#fff", borderRadius: 2, transition: "width 0.25s linear" }} />
+        {/* progress bar — clickable seek */}
+        <div
+          onClick={(e) => {
+            const v = videoRef.current;
+            if (!v || !v.duration) return;
+            const rect = e.currentTarget.getBoundingClientRect();
+            const pct = (e.clientX - rect.left) / rect.width;
+            v.currentTime = pct * v.duration;
+          }}
+          style={{ height: 12, display: "flex", alignItems: "center", cursor: "pointer", pointerEvents: "auto" }}
+        >
+          <div style={{ width: "100%", height: 3, borderRadius: 2, background: "rgba(255,255,255,0.25)", overflow: "hidden" }}>
+            <div style={{ width: `${progress * 100}%`, height: "100%", background: "#fff", borderRadius: 2, transition: "width 0.25s linear" }} />
+          </div>
         </div>
       </div>
     </div>
