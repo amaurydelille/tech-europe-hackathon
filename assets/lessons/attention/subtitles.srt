@@ -1,0 +1,95 @@
+1
+00:00:00,218 --> 00:00:01,964
+Before Transformers, sequence models
+
+2
+00:00:01,964 --> 00:00:04,291
+read text one token at a time, so
+
+3
+00:00:04,291 --> 00:00:05,891
+long-range links were slow and
+
+4
+00:00:05,891 --> 00:00:06,618
+fragile.
+
+5
+00:00:06,836 --> 00:00:08,508
+Self-attention changed that: every
+
+6
+00:00:08,508 --> 00:00:09,890
+token can look directly at every
+
+7
+00:00:09,890 --> 00:00:11,418
+other token in the sequence.
+
+8
+00:00:11,636 --> 00:00:13,599
+Each token starts as an embedding
+
+9
+00:00:13,599 --> 00:00:15,854
+plus a positional encoding, so the
+
+10
+00:00:15,854 --> 00:00:17,672
+model knows meaning and order.
+
+11
+00:00:17,889 --> 00:00:19,708
+From that matrix X, it learns
+
+12
+00:00:19,708 --> 00:00:22,035
+queries, keys, and values.
+
+13
+00:00:22,253 --> 00:00:24,289
+Queries seek, keys match, and values
+
+14
+00:00:24,289 --> 00:00:26,035
+carry the information forward.
+
+15
+00:00:26,253 --> 00:00:28,435
+The core step is QK transpose over
+
+16
+00:00:28,435 --> 00:00:30,835
+root d-k, then softmax, then
+
+17
+00:00:30,835 --> 00:00:32,289
+a weighted mix of V.
+
+18
+00:00:32,506 --> 00:00:33,670
+Those weights make meaning
+
+19
+00:00:33,670 --> 00:00:35,706
+contextual, and multi-head attention
+
+20
+00:00:35,706 --> 00:00:37,452
+lets different heads track different
+
+21
+00:00:37,452 --> 00:00:38,834
+relationships at once.
+
+22
+00:00:39,052 --> 00:00:41,016
+Stacked blocks train in parallel,
+
+23
+00:00:41,016 --> 00:00:42,907
+but attention still has a quadratic
+
+24
+00:00:42,907 --> 00:00:43,707
+cost.

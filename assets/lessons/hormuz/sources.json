@@ -1,0 +1,14 @@
+{
+  "sources": [
+    {
+      "name": "BBC News — Strait of Hormuz",
+      "url": "https://www.bbc.com/news/articles/c78n6p09pzno",
+      "timestamp": 0.1
+    },
+    {
+      "name": "CNBC — Strait of Hormuz crisis explained",
+      "url": "https://www.cnbc.com/2026/03/02/strait-of-hormuz-crisis-us-iran-israel-war-shipping-trade-oil.html",
+      "timestamp": 20.2
+    }
+  ]
+}
