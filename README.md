@@ -25,21 +25,28 @@ Search family + GLINER ?
 Output: leçon
 
 
-> output: Cours brut
+> output: Cours brut (two markdowns)
 
 #### 2.2 Video generation
 
-> Input: Cours brut
+> Input: Two markdowns : the very detailed class, and a synthetized version (for the script that will appear below the video)
 
-Agent réalisateur
-0:37 : "Le consul avait marché en Rome..."
-[0:37 - 0:42] : vidéo of legionaries marching
-0:42 : image
+- Stack : Agent réalisateur based on the openai harness 
 
-TTS Gradium
-Seedance
+Ask it to work on a timestamped script of the sort
+- 0:37 : "Le consul avait marché en Rome..."
+- [0:37 - 0:42] : vidéo of legionaries marching, detailed prompt: "... "(detail the subject, lightining, setting, context, action, style, etc)
+- [0:42 - 0:45] : image of the consul, detailed prompt: "Middle-aged consul, set..." (detail the subject, lightining, setting, context, style, etc)
+- 0:42: "C'était une situation exceptionnelle"
 
-> Output: Vidéo
+Agent uses TTS Gradium to make the transcript for each
+ - through a tool generate_tts(prompt) -> outputs the duration and the path under which it was put
+Agent uses Seedance to make the videos
+ - through a tool generate_video(prompt) -> outputs the duration and images sampled from the video every second of it (so that the model sees what was made)
+
+> Output: exact timestamped script
+
+Then a program just stitches togther all the videos and speeches sounds to make a full video
 
 
 ## Frontend : Next

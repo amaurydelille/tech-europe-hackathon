@@ -1,0 +1,159 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+
+from backend.video_generation.tools.validate_script import (
+    ValidationError,
+    validate_script,
+)
+
+
+def _base_speech(start: float, duration: float, idx: int) -> dict:
+    return {
+        "kind": "speech",
+        "start": start,
+        "duration": duration,
+        "text": f"line {idx}",
+        "audio_path": f"assets/audio/s{idx:03d}.wav",
+    }
+
+
+def _base_video(start: float, end: float, idx: int) -> dict:
+    return {
+        "kind": "video",
+        "start": start,
+        "end": end,
+        "duration": end - start,
+        "prompt": f"video {idx}",
+        "anchors": ["anchor_a"],
+        "video_path": f"assets/video/v{idx:03d}.mp4",
+    }
+
+
+def _base_image(start: float, end: float, idx: int) -> dict:
+    return {
+        "kind": "image",
+        "start": start,
+        "end": end,
+        "prompt": f"image {idx}",
+        "anchors": [],
+        "image_path": f"assets/image/i{idx:03d}.png",
+    }
+
+
+def test_valid_script_passes() -> None:
+    script = {
+        "total_duration": 10.0,
+        "resolution": "480p",
+        "aspect": "16:9",
+        "entries": [
+            _base_speech(0.0, 4.0, 0),
+            _base_speech(5.0, 3.0, 1),
+            _base_video(0.0, 5.0, 0),
+            _base_image(5.0, 10.0, 0),
+        ],
+    }
+    validate_script(script)
+
+
+def test_overlapping_speech_rejected() -> None:
+    script = {
+        "total_duration": 10.0,
+        "resolution": "480p",
+        "aspect": "16:9",
+        "entries": [
+            _base_speech(0.0, 4.0, 0),
+            _base_speech(3.0, 3.0, 1),
+            _base_video(0.0, 10.0, 0),
+        ],
+    }
+    with pytest.raises(ValidationError, match="speech.*overlap"):
+        validate_script(script)
+
+
+def test_visual_gap_rejected() -> None:
+    script = {
+        "total_duration": 10.0,
+        "resolution": "480p",
+        "aspect": "16:9",
+        "entries": [
+            _base_speech(0.0, 4.0, 0),
+            _base_video(0.0, 4.0, 0),
+            _base_image(5.0, 10.0, 0),
+        ],
+    }
+    with pytest.raises(ValidationError, match="gap"):
+        validate_script(script)
+
+
+def test_visual_overlap_rejected() -> None:
+    script = {
+        "total_duration": 10.0,
+        "resolution": "480p",
+        "aspect": "16:9",
+        "entries": [
+            _base_video(0.0, 6.0, 0),
+            _base_image(5.0, 10.0, 0),
+        ],
+    }
+    with pytest.raises(ValidationError, match="overlap"):
+        validate_script(script)
+
+
+def test_visuals_must_reach_total_duration() -> None:
+    script = {
+        "total_duration": 12.0,
+        "resolution": "480p",
+        "aspect": "16:9",
+        "entries": [
+            _base_video(0.0, 5.0, 0),
+            _base_image(5.0, 10.0, 0),
+        ],
+    }
+    with pytest.raises(ValidationError, match="cover"):
+        validate_script(script)
+
+
+def test_video_duration_must_match_end_minus_start() -> None:
+    entry = _base_video(0.0, 5.0, 0)
+    entry["duration"] = 4.0
+    script = {
+        "total_duration": 5.0,
+        "resolution": "480p",
+        "aspect": "16:9",
+        "entries": [_base_speech(0.0, 5.0, 0), entry],
+    }
+    with pytest.raises(ValidationError, match="duration"):
+        validate_script(script)
+
+
+def test_speech_must_fit_within_total_duration() -> None:
+    script = {
+        "total_duration": 5.0,
+        "resolution": "480p",
+        "aspect": "16:9",
+        "entries": [
+            _base_speech(3.0, 5.0, 0),
+            _base_video(0.0, 5.0, 0),
+        ],
+    }
+    with pytest.raises(ValidationError, match="total_duration"):
+        validate_script(script)
+
+
+def test_validates_from_file(tmp_path: Path) -> None:
+    script = {
+        "total_duration": 5.0,
+        "resolution": "480p",
+        "aspect": "16:9",
+        "entries": [
+            _base_speech(0.0, 4.0, 0),
+            _base_video(0.0, 5.0, 0),
+        ],
+    }
+    path = tmp_path / "script.json"
+    path.write_text(json.dumps(script))
+    validate_script(path)

@@ -1,0 +1,149 @@
+from __future__ import annotations
+
+import argparse
+import os
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+from .config import REPO_ROOT
+from .workspace import Workspace, create_workspace
+
+INSTRUCTIONS_PATH = Path(__file__).parent / "instructions.md"
+DEFAULT_CODEX_MODEL: str | None = None  # let codex use its config default
+
+
+def _read_instructions() -> str:
+    return INSTRUCTIONS_PATH.read_text()
+
+
+def _prepare_workspace(lesson_md: str) -> Workspace:
+    workspace = create_workspace()
+    (workspace.inputs_dir / "lesson.md").write_text(lesson_md)
+    return workspace
+
+
+def _build_prompt(workspace: Workspace) -> str:
+    instructions = _read_instructions()
+    return (
+        f"{instructions}\n\n"
+        f"## This run\n\n"
+        f"- Working directory: `{workspace.root}` (you are already cd'd into it).\n"
+        f"- Lesson file: `inputs/lesson.md`.\n"
+        f"- Final output: `outputs/final.mp4`.\n"
+        f"- The repository root with the tool modules is `{REPO_ROOT}` "
+        f"and is already accessible. Use `uv run --project {REPO_ROOT} python -m backend.video_generation.tools.<name> ...` "
+        f"to invoke any tool.\n"
+        f"- When done, print the absolute path of `outputs/final.mp4` and stop.\n"
+    )
+
+
+def _codex_command(workspace: Workspace, model: str | None) -> list[str]:
+    cmd = [
+        "codex",
+        "exec",
+        "--skip-git-repo-check",
+        "--full-auto",
+        "--cd", str(workspace.root),
+        "--add-dir", str(REPO_ROOT),
+        "-o", str(workspace.root / "codex.last_message.txt"),
+    ]
+    if model:
+        cmd += ["-m", model]
+    return cmd
+
+
+def generate_video(
+    lesson_md: str,
+    out_path: Path | None = None,
+    *,
+    model: str | None = DEFAULT_CODEX_MODEL,
+    extra_env: dict | None = None,
+) -> Path:
+    """Turn a lesson markdown into a narrated video MP4.
+
+    Args:
+        lesson_md: Lesson content as a markdown string.
+        out_path: Where to copy the final MP4. If None, leave it under the workspace.
+        model: Optional codex model override (e.g. "gpt-5-codex").
+        extra_env: Extra env vars to pass to codex.
+
+    Returns:
+        Path to the final MP4.
+    """
+    if shutil.which("codex") is None:
+        raise RuntimeError("`codex` CLI not found on PATH")
+    if shutil.which("ffmpeg") is None:
+        raise RuntimeError("`ffmpeg` not found on PATH")
+
+    workspace = _prepare_workspace(lesson_md)
+    prompt = _build_prompt(workspace)
+
+    env = os.environ.copy()
+    if extra_env:
+        env.update(extra_env)
+
+    cmd = _codex_command(workspace, model)
+    proc = subprocess.run(
+        cmd,
+        input=prompt,
+        text=True,
+        env=env,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(f"codex exec failed with code {proc.returncode}")
+
+    produced = workspace.outputs_dir / "final.mp4"
+    if not produced.is_file():
+        raise RuntimeError(
+            f"codex finished but no final video at {produced}. "
+            f"See {workspace.root / 'codex.last_message.txt'} for the agent's last message."
+        )
+
+    if out_path is not None:
+        out_path = Path(out_path)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(produced, out_path)
+        return out_path
+    return produced
+
+
+def _main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Generate a narrated video from a lesson markdown file."
+    )
+    parser.add_argument(
+        "lesson",
+        type=Path,
+        help="Path to the lesson markdown file.",
+    )
+    parser.add_argument(
+        "--out",
+        type=Path,
+        default=None,
+        help="Optional destination path for the final MP4.",
+    )
+    parser.add_argument(
+        "--model",
+        type=str,
+        default=DEFAULT_CODEX_MODEL,
+        help="Codex model id (passed via `codex exec -m`).",
+    )
+    args = parser.parse_args(argv)
+
+    if not args.lesson.is_file():
+        print(f"lesson file not found: {args.lesson}", file=sys.stderr)
+        return 1
+
+    final = generate_video(
+        lesson_md=args.lesson.read_text(),
+        out_path=args.out,
+        model=args.model,
+    )
+    print(str(final))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(_main())
