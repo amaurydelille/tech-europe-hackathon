@@ -33,7 +33,7 @@ Read `inputs/lesson.md`. Note the key subjects, settings, and characters that wi
 
 ### Step 2 — Plan the anchors
 
-Anchors are the **canonical, frozen references** for the few recurring subjects, characters, or settings that appear in multiple shots. They are generated once at the start and reused everywhere; their job is visual consistency, not coverage. **Keep anchors to a maximum of 3.** If you find yourself wanting a 4th, consolidate (e.g. two characters can share one group portrait) or promote that subject to an intermediate shot instead.
+Anchors are the **canonical, frozen references** for the few recurring subjects, characters, or settings that appear in multiple shots. They are generated once at the start and reused everywhere; their job is visual consistency, not coverage. **Don't go overboard — indicatively ~3 anchors per 30 s of narration**, with room to go higher if the lesson genuinely has many distinct characters or subjects worth pinning down. When a candidate anchor only appears in a single shot, skip it and use an intermediate shot instead.
 
 Anchors are *not* the same as the per-shot images you'll generate later. Per-shot ("intermediate") shots are unbounded in number — see Step 6.
 
