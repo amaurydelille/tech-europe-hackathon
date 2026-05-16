@@ -1378,7 +1378,140 @@ function ArticleContent({ course }: { course: ParsedCourse }) {
   );
 }
 
+// ── End-of-feed card (shown over video when no more videos to scroll to) ──
+function EndOfFeedCard({
+  onCreate,
+  onBack,
+  canGoBack,
+}: {
+  onCreate: () => void;
+  onBack: () => void;
+  canGoBack: boolean;
+}) {
+  return (
+    <motion.div
+      initial={{ y: "100%" }}
+      animate={{ y: 0 }}
+      exit={{ y: "100%" }}
+      transition={{ duration: 0.32, ease: [0.32, 0.72, 0, 1] as [number, number, number, number] }}
+      style={{
+        position: "absolute",
+        inset: 0,
+        zIndex: 40,
+        background: "linear-gradient(180deg, rgba(10,10,10,0.92), rgba(10,10,10,0.98))",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "32px 28px",
+        textAlign: "center",
+        color: "#fff",
+        gap: 16,
+      }}
+    >
+      <div
+        style={{
+          width: 56,
+          height: 56,
+          borderRadius: 28,
+          background: "rgba(255,255,255,0.1)",
+          border: "1px solid rgba(255,255,255,0.18)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          marginBottom: 4,
+        }}
+      >
+        <svg viewBox="0 0 24 24" fill="none" width={24} height={24} aria-hidden>
+          <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+        </svg>
+      </div>
+      <div
+        style={{
+          fontFamily: "var(--f-head)",
+          fontSize: 22,
+          fontWeight: 500,
+          letterSpacing: "-0.02em",
+        }}
+      >
+        You&apos;re all caught up
+      </div>
+      <div
+        style={{
+          fontSize: 14,
+          color: "rgba(255,255,255,0.7)",
+          fontFamily: "var(--f-body)",
+          lineHeight: 1.5,
+          maxWidth: 260,
+        }}
+      >
+        You&apos;ve watched every video in your feed. Create a new course to keep learning.
+      </div>
+      <button
+        onClick={onCreate}
+        style={{
+          marginTop: 8,
+          height: 50,
+          padding: "0 22px",
+          minWidth: 200,
+          borderRadius: 25,
+          border: "none",
+          background: "#FAF7F0",
+          color: "#0B0907",
+          fontFamily: "var(--f-body)",
+          fontWeight: 600,
+          fontSize: 15,
+          cursor: "pointer",
+        }}
+      >
+        Create a new video
+      </button>
+      {canGoBack && (
+        <button
+          onClick={onBack}
+          style={{
+            marginTop: 4,
+            background: "transparent",
+            border: "none",
+            color: "rgba(255,255,255,0.75)",
+            fontFamily: "var(--f-body)",
+            fontSize: 13,
+            cursor: "pointer",
+            padding: 8,
+          }}
+        >
+          ↑ Swipe up to go back
+        </button>
+      )}
+    </motion.div>
+  );
+}
+
 type View = "video" | "reading";
+
+const SEEN_VIDEOS_KEY = "gradium.seenVideos";
+const FEED_DIRECTION_KEY = "gradium.feedDirection";
+
+function readSeenVideos(): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.sessionStorage.getItem(SEEN_VIDEOS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeSeenVideos(ids: string[]): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(SEEN_VIDEOS_KEY, JSON.stringify(ids));
+  } catch {
+    // storage unavailable
+  }
+}
 
 // ── Main component ────────────────────────────────────────────────────
 export function CourseViewA({ course, courseId }: { course: ParsedCourse; courseId: string }) {
@@ -1390,6 +1523,46 @@ export function CourseViewA({ course, courseId }: { course: ParsedCourse; course
   const [socials, setSocials] = useState<Socials>({ likes: 0, shares: 0, comments: [] });
   const [liked, setLiked] = useState(false);
   const [readProgress, setReadProgress] = useState(0);
+  const [allCourseIds, setAllCourseIds] = useState<string[]>([]);
+  const [seenIds] = useState<string[]>(() => {
+    const current = readSeenVideos();
+    return current.includes(courseId) ? current : [...current, courseId];
+  });
+  const [showEndCard, setShowEndCard] = useState(false);
+  const [navDirection] = useState<"up" | "down" | null>(() => {
+    if (typeof window === "undefined") return null;
+    const d = window.sessionStorage.getItem(FEED_DIRECTION_KEY);
+    if (d === "up" || d === "down") {
+      window.sessionStorage.removeItem(FEED_DIRECTION_KEY);
+      return d;
+    }
+    return null;
+  });
+
+  // Load list of available courses
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/courses`)
+      .then((r) => r.json())
+      .then((data: { ids?: unknown }) => {
+        if (cancelled) return;
+        const ids = Array.isArray(data.ids)
+          ? data.ids.filter((x): x is string => typeof x === "string")
+          : [];
+        setAllCourseIds(ids);
+      })
+      .catch(() => {
+        if (!cancelled) setAllCourseIds([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Persist seen videos to sessionStorage when the set changes
+  useEffect(() => {
+    writeSeenVideos(seenIds);
+  }, [seenIds]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1427,11 +1600,72 @@ export function CourseViewA({ course, courseId }: { course: ParsedCourse; course
   const handleOpenComments = useCallback(() => setShowComments(true), []);
   const articleRef = useRef<HTMLDivElement>(null);
   const outerRef = useRef<HTMLDivElement>(null);
+  const videoPaneRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<View>("video");
   const touchStartX = useRef(0);
   const touchStartY = useRef(0);
   const didSwipe = useRef(false);
+  const wheelLockRef = useRef(false);
+  const navigatingRef = useRef(false);
   const router = useRouter();
+
+  // If we just arrived via a feed scroll, swallow the tail of that gesture
+  // so it doesn't immediately trigger another navigation on the new page.
+  useEffect(() => {
+    if (navDirection === null) return;
+    wheelLockRef.current = true;
+    const id = window.setTimeout(() => {
+      wheelLockRef.current = false;
+    }, 900);
+    return () => window.clearTimeout(id);
+  }, [navDirection]);
+
+  const seenIdsRef = useRef<string[]>([]);
+  const allIdsRef = useRef<string[]>([]);
+  useEffect(() => { seenIdsRef.current = seenIds; }, [seenIds]);
+  useEffect(() => { allIdsRef.current = allCourseIds; }, [allCourseIds]);
+
+  const goToNextVideo = useCallback(() => {
+    if (navigatingRef.current) return;
+    const seen = seenIdsRef.current;
+    const all = allIdsRef.current;
+    const idx = seen.indexOf(courseId);
+    let nextId: string | null = null;
+
+    if (idx >= 0 && idx < seen.length - 1) {
+      nextId = seen[idx + 1];
+    } else {
+      const unseen = all.find((id) => !seen.includes(id));
+      if (unseen) nextId = unseen;
+    }
+
+    if (nextId) {
+      navigatingRef.current = true;
+      if (typeof window !== "undefined") {
+        window.sessionStorage.setItem(FEED_DIRECTION_KEY, "down");
+      }
+      router.push(`/course/${encodeURIComponent(nextId)}`);
+    } else {
+      setShowEndCard(true);
+    }
+  }, [courseId, router]);
+
+  const goToPrevVideo = useCallback(() => {
+    if (navigatingRef.current) return;
+    if (showEndCard) {
+      setShowEndCard(false);
+      return;
+    }
+    const seen = seenIdsRef.current;
+    const idx = seen.indexOf(courseId);
+    if (idx > 0) {
+      navigatingRef.current = true;
+      if (typeof window !== "undefined") {
+        window.sessionStorage.setItem(FEED_DIRECTION_KEY, "up");
+      }
+      router.push(`/course/${encodeURIComponent(seen[idx - 1])}`);
+    }
+  }, [courseId, router, showEndCard]);
 
   useEffect(() => { viewRef.current = view; }, [view]);
 
@@ -1453,9 +1687,20 @@ export function CourseViewA({ course, courseId }: { course: ParsedCourse; course
       const dx = e.touches[0].clientX - touchStartX.current;
       const dy = e.touches[0].clientY - touchStartY.current;
       const isHorizontal = Math.abs(dx) > Math.abs(dy) + 8;
-      if (!isHorizontal || Math.abs(dx) < 36) return;
+      const isVertical = Math.abs(dy) > Math.abs(dx) + 8;
 
       const cur = viewRef.current;
+
+      if (isVertical && cur === "video" && Math.abs(dy) > 56) {
+        e.preventDefault();
+        didSwipe.current = true;
+        if (dy < 0) goToNextVideo();
+        else goToPrevVideo();
+        return;
+      }
+
+      if (!isHorizontal || Math.abs(dx) < 36) return;
+
       if (cur === "video" && dx < 0) {
         e.preventDefault();
         didSwipe.current = true;
@@ -1475,7 +1720,29 @@ export function CourseViewA({ course, courseId }: { course: ParsedCourse; course
       el.removeEventListener("touchstart", onTouchStart);
       el.removeEventListener("touchmove", onTouchMove);
     };
-  }, []);
+  }, [goToNextVideo, goToPrevVideo]);
+
+  // Wheel/trackpad scroll on the video pane → navigate between videos
+  useEffect(() => {
+    const el = videoPaneRef.current;
+    if (!el) return;
+
+    function onWheel(e: WheelEvent) {
+      if (viewRef.current !== "video") return;
+      if (Math.abs(e.deltaY) < 20) return;
+      e.preventDefault();
+      if (wheelLockRef.current) return;
+      wheelLockRef.current = true;
+      if (e.deltaY > 0) goToNextVideo();
+      else goToPrevVideo();
+      window.setTimeout(() => { wheelLockRef.current = false; }, 600);
+    }
+
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => {
+      el.removeEventListener("wheel", onWheel);
+    };
+  }, [goToNextVideo, goToPrevVideo]);
 
   // Article scroll — track reading progress
   const handleScroll = useCallback((e: UIEvent<HTMLDivElement>) => {
@@ -1555,23 +1822,50 @@ export function CourseViewA({ course, courseId }: { course: ParsedCourse; course
         }}
       >
         {/* Fullscreen video panel (first) */}
-        <div style={{ width: "50%", height: "100%", position: "relative" }}>
-          <VideoBlock
-            courseId={courseId}
-            isPlaying={isPlaying}
-            progress={progress}
-            onTogglePlay={togglePlay}
-            onSeek={seek}
-          />
-          <SocialRail
-            likes={socials.likes}
-            shares={socials.shares}
-            commentCount={socials.comments.length}
-            liked={liked}
-            onLike={handleLike}
-            onComment={handleOpenComments}
-            onShare={handleShare}
-          />
+        <div
+          ref={videoPaneRef}
+          style={{ width: "50%", height: "100%", position: "relative", overflow: "hidden" }}
+        >
+          <motion.div
+            key={courseId}
+            initial={
+              navDirection === "down"
+                ? { y: "100%" }
+                : navDirection === "up"
+                  ? { y: "-100%" }
+                  : { y: 0 }
+            }
+            animate={{ y: 0 }}
+            transition={{ duration: 0.36, ease: [0.32, 0.72, 0, 1] as [number, number, number, number] }}
+            style={{ position: "absolute", inset: 0 }}
+          >
+            <VideoBlock
+              courseId={courseId}
+              isPlaying={isPlaying}
+              progress={progress}
+              onTogglePlay={togglePlay}
+              onSeek={seek}
+            />
+            <SocialRail
+              likes={socials.likes}
+              shares={socials.shares}
+              commentCount={socials.comments.length}
+              liked={liked}
+              onLike={handleLike}
+              onComment={handleOpenComments}
+              onShare={handleShare}
+            />
+          </motion.div>
+
+          <AnimatePresence>
+            {showEndCard && (
+              <EndOfFeedCard
+                onCreate={() => router.push("/chat")}
+                onBack={goToPrevVideo}
+                canGoBack={seenIds.indexOf(courseId) > 0}
+              />
+            )}
+          </AnimatePresence>
         </div>
 
         {/* Reading panel (second) */}
