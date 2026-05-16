@@ -6,7 +6,8 @@ export interface ListItem {
 export type Block =
   | { kind: "para"; text: string }
   | { kind: "list"; items: ListItem[] }
-  | { kind: "callout"; label: string; text: string };
+  | { kind: "callout"; label: string; text: string }
+  | { kind: "math"; latex: string };
 
 export interface CourseChapter {
   title: string;
@@ -38,9 +39,12 @@ function blocksWordCount(blocks: Block[]): number {
   return blocks.reduce((sum, b) => {
     if (b.kind === "para") return sum + wordCount(b.text);
     if (b.kind === "callout") return sum + wordCount(b.text);
+    if (b.kind === "math") return sum;
     return sum + b.items.reduce((s: number, i: ListItem) => s + wordCount(i.term + " " + i.body), 0);
   }, 0);
 }
+
+const BLOCK_MATH_RE = /^\$\$([\s\S]+?)\$\$$/;
 
 // ── Parsers ──────────────────────────────────────────────────────────
 
@@ -65,6 +69,11 @@ function parseBlocks(body: string): Block[] {
   const paragraphs = body.split(/\n{2,}/).map((s) => s.trim()).filter(Boolean);
 
   return paragraphs.map((para) => {
+    const mathMatch = para.match(BLOCK_MATH_RE);
+    if (mathMatch) {
+      return { kind: "math" as const, latex: mathMatch[1].trim() };
+    }
+
     const lines = para.split("\n");
     const isList = lines.every((l) => /^-\s/.test(l.trim()));
 

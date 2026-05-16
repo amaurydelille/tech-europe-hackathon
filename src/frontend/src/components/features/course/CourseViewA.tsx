@@ -10,6 +10,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { QRCodeSVG } from "qrcode.react";
+import { InlineMath, BlockMath } from "react-katex";
 import type { ParsedCourse, Block, ListItem } from "@/lib/parseCourse";
 
 // ── helpers ───────────────────────────────────────────────────────────
@@ -68,6 +69,7 @@ function VideoBlock({ courseId, isPlaying, progress, onTogglePlay, onSeek }: Vid
   const cuesRef = useRef<Cue[]>([]);
   const seenSourceIndicesRef = useRef<Set<number>>(new Set());
   const resumeAfterPopupRef = useRef(false);
+  const timeUpdateRafRef = useRef<number | null>(null);
   const [subtitle, setSubtitle] = useState("");
   const [timedSources, setTimedSources] = useState<TimedSource[]>([]);
   const [activeSource, setActiveSource] = useState<TimedSource | null>(null);
@@ -110,26 +112,39 @@ function VideoBlock({ courseId, isPlaying, progress, onTogglePlay, onSeek }: Vid
     else v.pause();
   }, [isPlaying]);
 
-  // Feed real video time back as progress + update subtitle
+  // Feed real video time back as progress + update subtitle (rAF-coalesced)
   const handleTimeUpdate = useCallback(() => {
-    const v = videoRef.current;
-    if (!v || !v.duration) return;
-    onSeek(v.currentTime / v.duration);
-    const cue = cuesRef.current.find((c) => v.currentTime >= c.start && v.currentTime <= c.end);
-    setSubtitle(cue?.text ?? "");
+    if (timeUpdateRafRef.current !== null) return;
+    timeUpdateRafRef.current = requestAnimationFrame(() => {
+      timeUpdateRafRef.current = null;
+      const v = videoRef.current;
+      if (!v || !v.duration) return;
+      onSeek(v.currentTime / v.duration);
+      const cue = cuesRef.current.find((c) => v.currentTime >= c.start && v.currentTime <= c.end);
+      setSubtitle(cue?.text ?? "");
 
-    const matchWindowSec = 0.4;
-    const sourceIdx = timedSources.findIndex((s, idx) => {
-      if (seenSourceIndicesRef.current.has(idx)) return false;
-      return Math.abs(v.currentTime - s.timestamp) <= matchWindowSec;
+      const matchWindowSec = 0.4;
+      const sourceIdx = timedSources.findIndex((s, idx) => {
+        if (seenSourceIndicesRef.current.has(idx)) return false;
+        return Math.abs(v.currentTime - s.timestamp) <= matchWindowSec;
+      });
+      if (sourceIdx >= 0) {
+        seenSourceIndicesRef.current.add(sourceIdx);
+        setActiveSource(timedSources[sourceIdx]);
+        setIsSourceOpen(false);
+        resumeAfterPopupRef.current = false;
+      }
     });
-    if (sourceIdx >= 0) {
-      seenSourceIndicesRef.current.add(sourceIdx);
-      setActiveSource(timedSources[sourceIdx]);
-      setIsSourceOpen(false);
-      resumeAfterPopupRef.current = false;
-    }
   }, [onSeek, timedSources]);
+
+  useEffect(() => {
+    return () => {
+      if (timeUpdateRafRef.current !== null) {
+        cancelAnimationFrame(timeUpdateRafRef.current);
+        timeUpdateRafRef.current = null;
+      }
+    };
+  }, []);
 
   const closeSourcePopup = useCallback(() => {
     setIsSourceOpen(false);
@@ -967,19 +982,28 @@ function SectionDivider({ n, total, label }: { n: number; total: number; label: 
 // ── Inline markdown renderer ──────────────────────────────────────────
 function Inline({ text, onCiteClick }: { text: string; onCiteClick?: (n: number) => void }) {
   const parts: React.ReactNode[] = [];
-  const re = /\*\*(.+?)\*\*|\*(.+?)\*|\[(\d+)\]/g;
+  const re = /\$\$([\s\S]+?)\$\$|\*\*(.+?)\*\*|\*(.+?)\*|\[(\d+)\]/g;
   let last = 0;
   let key = 0;
   let m: RegExpExecArray | null;
 
   while ((m = re.exec(text)) !== null) {
     if (m.index > last) parts.push(text.slice(last, m.index));
-    if (m[1] !== undefined)
-      parts.push(<strong key={key++} style={{ fontWeight: 600 }}>{m[1]}</strong>);
-    else if (m[2] !== undefined)
-      parts.push(<em key={key++}>{m[2]}</em>);
-    else if (m[3] !== undefined) {
-      const n = parseInt(m[3], 10);
+    if (m[1] !== undefined) {
+      parts.push(
+        <InlineMath
+          key={key++}
+          math={m[1].trim()}
+          errorColor="var(--text-3)"
+          renderError={(err) => <span style={{ color: "var(--text-3)" }}>{err.name}</span>}
+        />
+      );
+    } else if (m[2] !== undefined)
+      parts.push(<strong key={key++} style={{ fontWeight: 600 }}>{m[2]}</strong>);
+    else if (m[3] !== undefined)
+      parts.push(<em key={key++}>{m[3]}</em>);
+    else if (m[4] !== undefined) {
+      const n = parseInt(m[4], 10);
       parts.push(
         <button
           key={key++}
@@ -998,7 +1022,7 @@ function Inline({ text, onCiteClick }: { text: string; onCiteClick?: (n: number)
             lineHeight: 1,
           }}
         >
-          {m[3]}
+          {m[4]}
         </button>
       );
     }
@@ -1081,6 +1105,29 @@ function BlocksRenderer({ blocks, onCiteClick }: { blocks: Block[]; onCiteClick?
             <Callout key={i} label={block.label}>
               <Inline text={block.text} onCiteClick={onCiteClick} />
             </Callout>
+          );
+        }
+        if (block.kind === "math") {
+          return (
+            <div
+              key={i}
+              style={{
+                padding: "14px 16px",
+                marginBottom: 22,
+                borderRadius: 12,
+                background: "var(--bg-tint)",
+                border: "1px solid var(--border)",
+                overflowX: "auto",
+                color: "var(--text)",
+                textAlign: "center",
+              }}
+            >
+              <BlockMath
+                math={block.latex}
+                errorColor="var(--text-3)"
+                renderError={(err) => <span style={{ color: "var(--text-3)" }}>{err.name}</span>}
+              />
+            </div>
           );
         }
         return <ListBlock key={i} items={block.items} onCiteClick={onCiteClick} />;
@@ -1634,7 +1681,7 @@ export function CourseViewA({ course, courseId }: { course: ParsedCourse; course
     wheelLockRef.current = true;
     const id = window.setTimeout(() => {
       wheelLockRef.current = false;
-    }, 900);
+    }, 500);
     return () => window.clearTimeout(id);
   }, [navDirection]);
 
@@ -1642,6 +1689,26 @@ export function CourseViewA({ course, courseId }: { course: ParsedCourse; course
   const allIdsRef = useRef<string[]>([]);
   useEffect(() => { seenIdsRef.current = seenIds; }, [seenIds]);
   useEffect(() => { allIdsRef.current = allCourseIds; }, [allCourseIds]);
+
+  // Prefetch adjacent course routes + warm their lightweight metadata caches.
+  useEffect(() => {
+    if (allCourseIds.length === 0) return;
+    const idx = seenIds.indexOf(courseId);
+    const nextId =
+      idx >= 0 && idx < seenIds.length - 1
+        ? seenIds[idx + 1]
+        : allCourseIds.find((id) => !seenIds.includes(id)) ?? null;
+    const prevId = idx > 0 ? seenIds[idx - 1] : null;
+
+    const warm = (id: string) => {
+      router.prefetch(`/course/${encodeURIComponent(id)}`);
+      fetch(`/api/course/${encodeURIComponent(id)}/sources`).catch(() => {});
+      fetch(`/api/course/${encodeURIComponent(id)}/socials`).catch(() => {});
+      fetch(`/api/course/${encodeURIComponent(id)}/subtitle`).catch(() => {});
+    };
+    if (nextId && nextId !== courseId) warm(nextId);
+    if (prevId && prevId !== courseId) warm(prevId);
+  }, [allCourseIds, seenIds, courseId, router]);
 
   const goToNextVideo = useCallback(() => {
     if (navigatingRef.current) return;
@@ -1747,13 +1814,16 @@ export function CourseViewA({ course, courseId }: { course: ParsedCourse; course
 
     function onWheel(e: WheelEvent) {
       if (viewRef.current !== "video") return;
-      if (Math.abs(e.deltaY) < 20) return;
+      // The video pane has no native scroll surface — swallow every wheel event
+      // so trackpad horizontal-scroll / macOS swipe-back never leaks through.
       e.preventDefault();
+      if (Math.abs(e.deltaY) < 50) return;
+      if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
       if (wheelLockRef.current) return;
       wheelLockRef.current = true;
       if (e.deltaY > 0) goToNextVideo();
       else goToPrevVideo();
-      window.setTimeout(() => { wheelLockRef.current = false; }, 600);
+      window.setTimeout(() => { wheelLockRef.current = false; }, 350);
     }
 
     el.addEventListener("wheel", onWheel, { passive: false });
@@ -1762,13 +1832,29 @@ export function CourseViewA({ course, courseId }: { course: ParsedCourse; course
     };
   }, [goToNextVideo, goToPrevVideo]);
 
-  // Article scroll — track reading progress
+  // Article scroll — track reading progress (rAF-coalesced)
+  const scrollRafRef = useRef<number | null>(null);
   const handleScroll = useCallback((e: UIEvent<HTMLDivElement>) => {
     const el = e.currentTarget;
     const scrollTop = el.scrollTop;
-    const total = el.scrollHeight - el.clientHeight;
-    if (scrollTop <= 1) setReadProgress(0);
-    if (total > 0) setReadProgress(scrollTop / total);
+    const scrollHeight = el.scrollHeight;
+    const clientHeight = el.clientHeight;
+    if (scrollRafRef.current !== null) return;
+    scrollRafRef.current = requestAnimationFrame(() => {
+      scrollRafRef.current = null;
+      const total = scrollHeight - clientHeight;
+      if (scrollTop <= 1) setReadProgress(0);
+      else if (total > 0) setReadProgress(scrollTop / total);
+    });
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (scrollRafRef.current !== null) {
+        cancelAnimationFrame(scrollRafRef.current);
+        scrollRafRef.current = null;
+      }
+    };
   }, []);
 
   const togglePlay = useCallback(() => setIsPlaying((p) => !p), []);
@@ -1782,6 +1868,7 @@ export function CourseViewA({ course, courseId }: { course: ParsedCourse; course
         overflow: "hidden",
         background: "var(--bg)",
         position: "relative",
+        overscrollBehavior: "contain",
       }}
     >
       {/* ── Reading progress bar (very top, z60) */}
@@ -1879,12 +1966,20 @@ export function CourseViewA({ course, courseId }: { course: ParsedCourse; course
           display: "flex",
           transform: view === "video" ? "translateX(0)" : "translateX(-50%)",
           transition: "transform 0.38s cubic-bezier(0.4,0,0.2,1)",
+          willChange: "transform",
         }}
       >
         {/* Fullscreen video panel (first) */}
         <div
           ref={videoPaneRef}
-          style={{ width: "50%", height: "100%", position: "relative", overflow: "hidden" }}
+          style={{
+            width: "50%",
+            height: "100%",
+            position: "relative",
+            overflow: "hidden",
+            touchAction: "none",
+            overscrollBehavior: "contain",
+          }}
         >
           <motion.div
             key={courseId}
@@ -1897,7 +1992,7 @@ export function CourseViewA({ course, courseId }: { course: ParsedCourse; course
             }
             animate={{ y: 0 }}
             transition={{ duration: 0.36, ease: [0.32, 0.72, 0, 1] as [number, number, number, number] }}
-            style={{ position: "absolute", inset: 0 }}
+            style={{ position: "absolute", inset: 0, willChange: "transform" }}
           >
             <VideoBlock
               courseId={courseId}
