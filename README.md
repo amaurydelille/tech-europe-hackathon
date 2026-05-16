@@ -1,5 +1,6 @@
 # Kheiron — the most tailored tutor ever
 
+
 > Speak to an AI tutor, get a personalized video lesson.
 
 Kheiron is an end-to-end AI tutor. A user has a short voice conversation with a tutor agent, which collects who they are and what they want to learn. From that profile, the system builds a research-grounded course, then turns it into a narrated, vertical (9:16) video with synchronized subtitles — ready to watch in-app like a TikTok-style lesson.
@@ -9,6 +10,8 @@ Three pipelines power the experience:
 1. **Voice onboarding** — real-time STT → LLM agent → TTS loop over a WebSocket.
 2. **Course generation** — LLM-built search query → Tavily web search → GLiNER2 entity-density filter → GPT-5.5 narrative + condensed scripts with inline citations.
 3. **Video generation** — a Codex-driven director agent writes a timestamped script, generates anchor images (Seedream), animates them or shoots real motion (Seedance), narrates with Gradium TTS, and stitches the final MP4 + SRT with ffmpeg.
+
+<img width="1710" height="900" alt="image" src="https://github.com/user-attachments/assets/f6ab68b3-5c6f-40e8-b0ed-0f080cab217d" />
 
 ---
 
