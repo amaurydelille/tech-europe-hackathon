@@ -1,0 +1,24 @@
+{
+  "likes": 2847,
+  "shares": 412,
+  "comments": [
+    {
+      "id": "c1",
+      "author": "Marcus T.",
+      "text": "The Rubicon explanation finally clicked for me — great pacing.",
+      "createdAt": "2026-05-14T18:22:00Z"
+    },
+    {
+      "id": "c2",
+      "author": "Sofia R.",
+      "text": "Perfect recap before my history exam tomorrow.",
+      "createdAt": "2026-05-15T09:41:00Z"
+    },
+    {
+      "id": "c3",
+      "author": "James K.",
+      "text": "Loved the civil war section. Would watch a follow-up on Pompey.",
+      "createdAt": "2026-05-15T14:08:00Z"
+    }
+  ]
+}

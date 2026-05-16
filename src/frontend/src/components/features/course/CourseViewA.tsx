@@ -20,6 +20,7 @@ function fmtSec(s: number) {
 
 // ── Video block ───────────────────────────────────────────────────────
 interface VideoBlockProps {
+  courseId: string;
   isPlaying: boolean;
   progress: number;
   onTogglePlay: () => void;
@@ -27,6 +28,7 @@ interface VideoBlockProps {
 }
 
 interface Cue { start: number; end: number; text: string }
+interface TimedSource { name: string; url: string; timestamp: number }
 
 function parseSRT(raw: string): Cue[] {
   return raw.trim().split(/\n\n+/).flatMap((block) => {
@@ -42,18 +44,42 @@ function parseSRT(raw: string): Cue[] {
   });
 }
 
-function VideoBlock({ isPlaying, progress, onTogglePlay, onSeek }: VideoBlockProps) {
+function VideoBlock({ courseId, isPlaying, progress, onTogglePlay, onSeek }: VideoBlockProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const cuesRef = useRef<Cue[]>([]);
+  const seenSourceIndicesRef = useRef<Set<number>>(new Set());
   const [subtitle, setSubtitle] = useState("");
+  const [timedSources, setTimedSources] = useState<TimedSource[]>([]);
+  const [activeSource, setActiveSource] = useState<TimedSource | null>(null);
+  const [isSourceOpen, setIsSourceOpen] = useState(false);
 
   // Load and parse SRT once
   useEffect(() => {
-    fetch("/final.srt")
+    fetch(`/api/course/${encodeURIComponent(courseId)}/subtitle`)
       .then((r) => r.text())
       .then((raw) => { cuesRef.current = parseSRT(raw); })
       .catch(() => {});
-  }, []);
+  }, [courseId]);
+
+  useEffect(() => {
+    seenSourceIndicesRef.current = new Set();
+    setActiveSource(null);
+    setIsSourceOpen(false);
+    fetch(`/api/course/${encodeURIComponent(courseId)}/sources`)
+      .then((r) => r.json())
+      .then((payload: { sources?: Array<{ name?: unknown; url?: unknown; timestamp?: unknown }> }) => {
+        const parsed = (payload.sources ?? [])
+          .map((s) => ({
+            name: typeof s.name === "string" ? s.name : "",
+            url: typeof s.url === "string" ? s.url : "",
+            timestamp: typeof s.timestamp === "number" ? s.timestamp : Number(s.timestamp ?? 0),
+          }))
+          .filter((s) => s.name && s.url && Number.isFinite(s.timestamp))
+          .sort((a, b) => a.timestamp - b.timestamp);
+        setTimedSources(parsed);
+      })
+      .catch(() => setTimedSources([]));
+  }, [courseId]);
 
   // Sync play/pause to the video element
   useEffect(() => {
@@ -70,7 +96,24 @@ function VideoBlock({ isPlaying, progress, onTogglePlay, onSeek }: VideoBlockPro
     onSeek(v.currentTime / v.duration);
     const cue = cuesRef.current.find((c) => v.currentTime >= c.start && v.currentTime <= c.end);
     setSubtitle(cue?.text ?? "");
-  }, [onSeek]);
+
+    const matchWindowSec = 0.4;
+    const sourceIdx = timedSources.findIndex((s, idx) => {
+      if (seenSourceIndicesRef.current.has(idx)) return false;
+      return Math.abs(v.currentTime - s.timestamp) <= matchWindowSec;
+    });
+    if (sourceIdx >= 0) {
+      seenSourceIndicesRef.current.add(sourceIdx);
+      setActiveSource(timedSources[sourceIdx]);
+      setIsSourceOpen(false);
+    }
+  }, [onSeek, timedSources]);
+
+  useEffect(() => {
+    if (!activeSource || isSourceOpen) return;
+    const t = window.setTimeout(() => setActiveSource(null), 8000);
+    return () => window.clearTimeout(t);
+  }, [activeSource, isSourceOpen]);
 
   return (
     <div
@@ -85,7 +128,7 @@ function VideoBlock({ isPlaying, progress, onTogglePlay, onSeek }: VideoBlockPro
       {/* real video */}
       <video
         ref={videoRef}
-        src="/final.mp4"
+        src={`/api/course/${encodeURIComponent(courseId)}/video`}
         onTimeUpdate={handleTimeUpdate}
         onEnded={() => onSeek(1)}
         playsInline
@@ -135,6 +178,64 @@ function VideoBlock({ isPlaying, progress, onTogglePlay, onSeek }: VideoBlockPro
         onClick={onTogglePlay}
         style={{ position: "absolute", inset: 0, cursor: "pointer" }}
       />
+
+      {activeSource && (
+        <div
+          style={{
+            position: "absolute",
+            top: 72,
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 5,
+            pointerEvents: "auto",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+          }}
+        >
+          <button
+            onClick={() => setIsSourceOpen((v) => !v)}
+            style={{
+              border: "1px solid rgba(255,255,255,0.25)",
+              borderRadius: 999,
+              background: "rgba(12,12,12,0.8)",
+              color: "#fff",
+              fontSize: 12,
+              fontWeight: 600,
+              padding: "6px 10px",
+              cursor: "pointer",
+            }}
+          >
+            ! Sources
+          </button>
+          {isSourceOpen && (
+            <div
+              style={{
+                marginTop: 8,
+                width: "min(86vw, 360px)",
+                padding: "10px 12px",
+                borderRadius: 12,
+                background: "rgba(12,12,12,0.9)",
+                border: "1px solid rgba(255,255,255,0.18)",
+                backdropFilter: "blur(8px)",
+                color: "#fff",
+              }}
+            >
+              <div style={{ fontSize: 13, lineHeight: 1.35, marginBottom: 6 }}>
+                {activeSource.name}
+              </div>
+              <a
+                href={activeSource.url}
+                target="_blank"
+                rel="noreferrer noopener"
+                style={{ color: "#A7D8FF", fontSize: 12, textDecoration: "underline" }}
+              >
+                See more
+              </a>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* bottom controls */}
       <div
@@ -925,7 +1026,7 @@ function ArticleContent({ course }: { course: ParsedCourse }) {
 type Phase = "video" | "pivot" | "reading";
 
 // ── Main component ────────────────────────────────────────────────────
-export function CourseViewA({ course }: { course: ParsedCourse }) {
+export function CourseViewA({ course, courseId }: { course: ParsedCourse; courseId: string }) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
   const [phase, setPhase] = useState<Phase>("video");
@@ -1105,6 +1206,7 @@ export function CourseViewA({ course }: { course: ParsedCourse }) {
         }}
       >
         <VideoBlock
+          courseId={courseId}
           isPlaying={isPlaying}
           progress={progress}
           onTogglePlay={togglePlay}
