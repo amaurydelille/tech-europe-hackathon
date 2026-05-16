@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import shutil
 import subprocess
@@ -168,14 +169,45 @@ def generate_video(
     return workspace.outputs_dir
 
 
+def load_lesson(path: Path) -> str:
+    """Load a lesson markdown from either a `.md`/`.txt` file or a `.json`
+    payload of the shape `{"full_markdown": "...", "references": [{"title", "url"}]}`.
+
+    For JSON input, the references are appended as a `## Sources` markdown
+    section so the agent can attach them as source citations to the
+    relevant speech entries.
+    """
+    text = path.read_text()
+    if path.suffix.lower() != ".json":
+        return text
+    data = json.loads(text)
+    if not isinstance(data, dict) or "full_markdown" not in data:
+        raise ValueError(
+            f"{path}: JSON input must be an object with a 'full_markdown' field"
+        )
+    lesson = data["full_markdown"].rstrip()
+    refs = data.get("references") or []
+    if refs:
+        lesson += "\n\n## Sources\n\n"
+        for r in refs:
+            title = r.get("title") or r.get("name") or r.get("url")
+            url = r.get("url")
+            if not url:
+                continue
+            lesson += f"- [{title}]({url})\n"
+    return lesson
+
+
 def _main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Generate a narrated video from a lesson markdown file."
+        description="Generate a narrated video from a lesson markdown or JSON file."
     )
     parser.add_argument(
         "lesson",
         type=Path,
-        help="Path to the lesson markdown file.",
+        help="Path to the lesson. Either a .md/.txt file, or a .json file with "
+             "'full_markdown' (string) and optional 'references' "
+             "([{title, url}]).",
     )
     parser.add_argument(
         "--out-dir",
@@ -202,7 +234,7 @@ def _main(argv: list[str] | None = None) -> int:
         return 1
 
     final_dir = generate_video(
-        lesson_md=args.lesson.read_text(),
+        lesson_md=load_lesson(args.lesson),
         out_dir=args.out_dir,
         target_duration_seconds=args.duration,
         model=args.model,
