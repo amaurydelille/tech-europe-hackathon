@@ -1,13 +1,15 @@
+import { readFileSync } from "fs";
+import { join } from "path";
+import { parseCourse } from "@/lib/parseCourse";
+import { CourseViewA } from "@/components/features/course/CourseViewA";
+
 interface CoursePageProps {
   params: Promise<{ id: string }>;
 }
 
 export default async function CoursePage({ params }: CoursePageProps) {
-  const { id } = await params;
-
-  return (
-    <main className="mx-auto max-w-4xl px-6 py-12">
-      <h1 className="text-2xl font-bold">Course {id}</h1>
-    </main>
-  );
+  await params;
+  const md = readFileSync(join(process.cwd(), "src/mock/exemple.txt"), "utf-8");
+  const course = parseCourse(md);
+  return <CourseViewA course={course} />;
 }

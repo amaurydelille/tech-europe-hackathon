@@ -327,7 +327,7 @@ export function SummaryView({ onReset }: { onReset: () => void }) {
           Edit
         </button>
         <button
-          onClick={() => router.push(`${ROUTES.COURSE}/new`)}
+          onClick={() => router.push(ROUTES.GENERATE)}
           style={{
             flex: 1,
             height: 56,
