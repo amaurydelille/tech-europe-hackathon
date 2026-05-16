@@ -11,7 +11,7 @@ Three pipelines power the experience:
 2. **Course generation** — LLM-built search query → Tavily web search → GLiNER2 entity-density filter → GPT-5.5 narrative + condensed scripts with inline citations.
 3. **Video generation** — a Codex-driven director agent writes a timestamped script, generates anchor images (Seedream), animates them or shoots real motion (Seedance), narrates with Gradium TTS, and stitches the final MP4 + SRT with ffmpeg.
 
-<img width="1710" height="900" alt="image" src="https://github.com/user-attachments/assets/f6ab68b3-5c6f-40e8-b0ed-0f080cab217d" />
+<img width="1699" height="847" alt="image" src="https://github.com/user-attachments/assets/6076c70f-cfdf-4db6-bbf4-412a9a28b3eb" />
 
 ---
 
