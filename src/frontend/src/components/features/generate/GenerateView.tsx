@@ -134,40 +134,49 @@ export function GenerateView() {
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
-  const runGeneration = useCallback(async (nextProfile: OnboardingProfile) => {
+  // DEMO MODE: real generation call commented out — mock loading then jump to /course/demo.
+  const runGeneration = useCallback(async (_nextProfile: OnboardingProfile) => {
     setStatus("loading");
     setError(null);
 
-    try {
-      const output = await courseService.generate(nextProfile);
-      setDraft(output);
-      router.push(ROUTES.DRAFT);
-    } catch (err) {
-      setError(getErrorMessage(err));
-      setStatus("error");
-    }
+    // try {
+    //   const output = await courseService.generate(_nextProfile);
+    //   setDraft(output);
+    //   router.push(ROUTES.DRAFT);
+    // } catch (err) {
+    //   setError(getErrorMessage(err));
+    //   setStatus("error");
+    // }
+
+    await new Promise((resolve) => setTimeout(resolve, 2500));
+    router.push(`${ROUTES.COURSE}/37dade8e-7ad7-4443-8da0-aabaef5f0ec7`);
   }, [router]);
 
   useEffect(() => {
-    if (!profile) {
-      router.replace(ROUTES.CHAT);
-      return;
-    }
+    // DEMO MODE: skip profile gating so the loading screen is always reachable.
+    // if (!profile) {
+    //   router.replace(ROUTES.CHAT);
+    //   return;
+    // }
 
-    const currentProfile = profile;
     let cancelled = false;
 
     async function generateOnMount() {
-      try {
-        const output = await courseService.generate(currentProfile);
-        if (cancelled) return;
-        setDraft(output);
-        router.push(ROUTES.DRAFT);
-      } catch (err) {
-        if (cancelled) return;
-        setError(getErrorMessage(err));
-        setStatus("error");
-      }
+      // const currentProfile = profile;
+      // try {
+      //   const output = await courseService.generate(currentProfile);
+      //   if (cancelled) return;
+      //   setDraft(output);
+      //   router.push(ROUTES.DRAFT);
+      // } catch (err) {
+      //   if (cancelled) return;
+      //   setError(getErrorMessage(err));
+      //   setStatus("error");
+      // }
+
+      await new Promise((resolve) => setTimeout(resolve, 2500));
+      if (cancelled) return;
+      router.push(`${ROUTES.COURSE}/37dade8e-7ad7-4443-8da0-aabaef5f0ec7`);
     }
 
     void generateOnMount();

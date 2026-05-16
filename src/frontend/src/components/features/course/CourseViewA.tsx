@@ -20,6 +20,7 @@ function fmtSec(s: number) {
 
 // ── Video block ───────────────────────────────────────────────────────
 interface VideoBlockProps {
+  courseId: string;
   isPlaying: boolean;
   progress: number;
   onTogglePlay: () => void;
@@ -27,6 +28,26 @@ interface VideoBlockProps {
 }
 
 interface Cue { start: number; end: number; text: string }
+interface TimedSource { name: string; url: string; timestamp: number }
+interface SocialComment { id: string; author: string; text: string; createdAt: string }
+interface Socials { likes: number; shares: number; comments: SocialComment[] }
+
+function fmtCount(n: number) {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1).replace(/\.0$/, "")}K`;
+  return String(n);
+}
+
+function fmtRelTime(iso: string) {
+  const t = new Date(iso).getTime();
+  if (!Number.isFinite(t)) return "";
+  const diff = (Date.now() - t) / 1000;
+  if (diff < 60) return "just now";
+  if (diff < 3600) return `${Math.floor(diff / 60)}m`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
+  if (diff < 604800) return `${Math.floor(diff / 86400)}d`;
+  return new Date(iso).toLocaleDateString();
+}
 
 function parseSRT(raw: string): Cue[] {
   return raw.trim().split(/\n\n+/).flatMap((block) => {
@@ -42,23 +63,49 @@ function parseSRT(raw: string): Cue[] {
   });
 }
 
-function VideoBlock({ isPlaying, progress, onTogglePlay, onSeek }: VideoBlockProps) {
+function VideoBlock({ courseId, isPlaying, progress, onTogglePlay, onSeek }: VideoBlockProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const cuesRef = useRef<Cue[]>([]);
+  const seenSourceIndicesRef = useRef<Set<number>>(new Set());
+  const resumeAfterPopupRef = useRef(false);
   const [subtitle, setSubtitle] = useState("");
+  const [timedSources, setTimedSources] = useState<TimedSource[]>([]);
+  const [activeSource, setActiveSource] = useState<TimedSource | null>(null);
+  const [isSourceOpen, setIsSourceOpen] = useState(false);
 
   // Load and parse SRT once
   useEffect(() => {
-    fetch("/final.srt")
+    fetch(`/api/course/${encodeURIComponent(courseId)}/subtitle`)
       .then((r) => r.text())
       .then((raw) => { cuesRef.current = parseSRT(raw); })
       .catch(() => {});
-  }, []);
+  }, [courseId]);
+
+  useEffect(() => {
+    seenSourceIndicesRef.current = new Set();
+    setActiveSource(null);
+    setIsSourceOpen(false);
+    fetch(`/api/course/${encodeURIComponent(courseId)}/sources`)
+      .then((r) => r.json())
+      .then((payload: { sources?: Array<{ name?: unknown; url?: unknown; timestamp?: unknown }> }) => {
+        const parsed = (payload.sources ?? [])
+          .map((s) => ({
+            name: typeof s.name === "string" ? s.name : "",
+            url: typeof s.url === "string" ? s.url : "",
+            timestamp: typeof s.timestamp === "number" ? s.timestamp : Number(s.timestamp ?? 0),
+          }))
+          .filter((s) => s.name && s.url && Number.isFinite(s.timestamp))
+          .sort((a, b) => a.timestamp - b.timestamp);
+        setTimedSources(parsed);
+      })
+      .catch(() => setTimedSources([]));
+  }, [courseId]);
 
   // Sync play/pause to the video element
   useEffect(() => {
     const v = videoRef.current;
     if (!v) return;
+    v.muted = true; // Required by most browsers for reliable autoplay
     if (isPlaying) v.play().catch(() => {});
     else v.pause();
   }, [isPlaying]);
@@ -70,7 +117,27 @@ function VideoBlock({ isPlaying, progress, onTogglePlay, onSeek }: VideoBlockPro
     onSeek(v.currentTime / v.duration);
     const cue = cuesRef.current.find((c) => v.currentTime >= c.start && v.currentTime <= c.end);
     setSubtitle(cue?.text ?? "");
-  }, [onSeek]);
+
+    const matchWindowSec = 0.4;
+    const sourceIdx = timedSources.findIndex((s, idx) => {
+      if (seenSourceIndicesRef.current.has(idx)) return false;
+      return Math.abs(v.currentTime - s.timestamp) <= matchWindowSec;
+    });
+    if (sourceIdx >= 0) {
+      seenSourceIndicesRef.current.add(sourceIdx);
+      setActiveSource(timedSources[sourceIdx]);
+      setIsSourceOpen(false);
+      resumeAfterPopupRef.current = false;
+    }
+  }, [onSeek, timedSources]);
+
+  const closeSourcePopup = useCallback(() => {
+    setIsSourceOpen(false);
+    if (resumeAfterPopupRef.current) {
+      videoRef.current?.play().catch(() => {});
+    }
+    resumeAfterPopupRef.current = false;
+  }, []);
 
   return (
     <div
@@ -85,9 +152,17 @@ function VideoBlock({ isPlaying, progress, onTogglePlay, onSeek }: VideoBlockPro
       {/* real video */}
       <video
         ref={videoRef}
-        src="/final.mp4"
+        src={`/api/course/${encodeURIComponent(courseId)}/video`}
+        autoPlay
+        muted
         onTimeUpdate={handleTimeUpdate}
         onEnded={() => onSeek(1)}
+        onLoadedMetadata={() => {
+          const v = videoRef.current;
+          if (!v) return;
+          v.muted = true;
+          v.play().catch(() => {});
+        }}
         playsInline
         preload="metadata"
         style={{
@@ -108,26 +183,35 @@ function VideoBlock({ isPlaying, progress, onTogglePlay, onSeek }: VideoBlockPro
           left: "50%",
           top: "50%",
           transform: "translate(-50%,-50%)",
-          width: 64,
-          height: 64,
+          width: 72,
+          height: 72,
           borderRadius: "50%",
-          background: "rgba(255,255,255,0.88)",
-          backdropFilter: "blur(8px)",
-          border: "none",
+          background: "rgba(255,255,255,0.08)",
+          backdropFilter: "blur(12px)",
+          WebkitBackdropFilter: "blur(12px)",
+          border: "1px solid rgba(255,255,255,0.35)",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          color: "#2a2520",
-          boxShadow: "0 8px 24px rgba(0,0,0,0.30)",
+          color: "#ffffff",
+          boxShadow: "0 10px 28px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.25)",
           cursor: "pointer",
           WebkitTapHighlightColor: "transparent",
           opacity: isPlaying ? 0 : 1,
+          pointerEvents: isPlaying ? "none" : "auto",
           transition: "opacity 0.2s",
         }}
       >
-        <svg viewBox="0 0 24 24" fill="currentColor" width={26} height={26} aria-hidden>
-          <path d="M7 5v14l12-7z" />
-        </svg>
+        {isPlaying ? (
+          <svg viewBox="0 0 24 24" fill="currentColor" width={24} height={24} aria-hidden>
+            <rect x="6.2" y="5.2" width="4.4" height="13.6" rx="1.2" />
+            <rect x="13.4" y="5.2" width="4.4" height="13.6" rx="1.2" />
+          </svg>
+        ) : (
+          <svg viewBox="0 0 24 24" fill="currentColor" width={26} height={26} aria-hidden>
+            <path d="M8 5.4c0-.8.9-1.3 1.6-.9l10.2 6.1c.7.4.7 1.4 0 1.8L9.6 18.5c-.7.4-1.6-.1-1.6-.9V5.4z" />
+          </svg>
+        )}
       </button>
 
       {/* tap anywhere to toggle (invisible full overlay) */}
@@ -135,6 +219,81 @@ function VideoBlock({ isPlaying, progress, onTogglePlay, onSeek }: VideoBlockPro
         onClick={onTogglePlay}
         style={{ position: "absolute", inset: 0, cursor: "pointer" }}
       />
+
+      {activeSource && (
+        <div
+          style={{
+            position: "absolute",
+            top: 10,
+            right: 14,
+            zIndex: 35,
+            pointerEvents: "auto",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "flex-end",
+          }}
+        >
+          <PillBtn
+            onClick={() => {
+              if (isSourceOpen) {
+                closeSourcePopup();
+                return;
+              }
+              setIsSourceOpen(true);
+              const wasPlaying = !!videoRef.current && !videoRef.current.paused;
+              resumeAfterPopupRef.current = wasPlaying;
+              if (wasPlaying) videoRef.current?.pause();
+            }}
+            ariaLabel="Show source"
+          >
+            <span style={{ fontSize: 20, fontWeight: 700, lineHeight: 1 }}>!</span>
+          </PillBtn>
+          {isSourceOpen && (
+            <div
+              style={{
+                marginTop: 8,
+                width: "min(86vw, 360px)",
+                padding: "10px 12px",
+                borderRadius: 12,
+                background: "rgba(12,12,12,0.9)",
+                border: "1px solid rgba(255,255,255,0.18)",
+                  backdropFilter: "blur(8px)",
+                  color: "#fff",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
+                  <div style={{ fontSize: 11, letterSpacing: 0.4, opacity: 0.75, textTransform: "uppercase" }}>Source</div>
+                  <button
+                    onClick={closeSourcePopup}
+                    aria-label="Close source popup"
+                    style={{
+                      border: "none",
+                      background: "transparent",
+                      color: "rgba(255,255,255,0.82)",
+                      cursor: "pointer",
+                      fontSize: 16,
+                      lineHeight: 1,
+                      padding: 0,
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
+                <div style={{ fontSize: 13, lineHeight: 1.35, marginBottom: 6 }}>
+                  {activeSource.name}
+                </div>
+              <a
+                href={activeSource.url}
+                target="_blank"
+                rel="noreferrer noopener"
+                style={{ color: "#A7D8FF", fontSize: 12, textDecoration: "underline" }}
+              >
+                See more
+              </a>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* bottom controls */}
       <div
@@ -364,6 +523,322 @@ function ShareModal({ onClose }: { onClose: () => void }) {
   );
 }
 
+// ── Comments modal ────────────────────────────────────────────────────
+function CommentsModal({
+  comments,
+  onClose,
+}: {
+  comments: SocialComment[];
+  onClose: () => void;
+}) {
+  return (
+    <>
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.2 }}
+        onClick={onClose}
+        style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: 80,
+          background: "rgba(0,0,0,0.55)",
+          backdropFilter: "blur(4px)",
+        }}
+      />
+      <motion.div
+        initial={{ y: "100%" }}
+        animate={{ y: 0 }}
+        exit={{ y: "100%" }}
+        transition={{ duration: 0.28, ease: [0.32, 0.72, 0, 1] as [number, number, number, number] }}
+        style={{
+          position: "fixed",
+          left: 0,
+          right: 0,
+          bottom: 0,
+          zIndex: 90,
+          background: "var(--surface)",
+          borderTopLeftRadius: 24,
+          borderTopRightRadius: 24,
+          maxHeight: "72dvh",
+          display: "flex",
+          flexDirection: "column",
+          boxShadow: "0 -16px 48px rgba(0,0,0,0.22)",
+        }}
+      >
+        <div
+          style={{
+            padding: "14px 16px 10px",
+            borderBottom: "1px solid var(--border)",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 8,
+          }}
+        >
+          <div
+            style={{
+              width: 36,
+              height: 4,
+              borderRadius: 2,
+              background: "var(--border-strong)",
+            }}
+          />
+          <div
+            style={{
+              fontFamily: "var(--f-head)",
+              fontSize: 15,
+              fontWeight: 500,
+              color: "var(--text)",
+              letterSpacing: "-0.01em",
+            }}
+          >
+            {comments.length} {comments.length === 1 ? "comment" : "comments"}
+          </div>
+        </div>
+        <div
+          className="no-scrollbar"
+          style={{
+            overflowY: "auto",
+            padding: "8px 4px 24px",
+            flex: 1,
+          }}
+        >
+          {comments.length === 0 ? (
+            <div
+              style={{
+                padding: "40px 24px",
+                textAlign: "center",
+                color: "var(--text-3)",
+                fontSize: 13,
+                fontFamily: "var(--f-body)",
+              }}
+            >
+              No comments yet.
+            </div>
+          ) : (
+            comments.map((c) => (
+              <div
+                key={c.id}
+                style={{
+                  display: "flex",
+                  gap: 12,
+                  padding: "12px 18px",
+                }}
+              >
+                <div
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 18,
+                    background: "var(--bg-tint)",
+                    border: "1px solid var(--border)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexShrink: 0,
+                    fontSize: 13,
+                    fontWeight: 600,
+                    color: "var(--text)",
+                    fontFamily: "var(--f-body)",
+                  }}
+                >
+                  {c.author.charAt(0).toUpperCase()}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "baseline",
+                      gap: 8,
+                      marginBottom: 2,
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 600,
+                        color: "var(--text)",
+                        fontFamily: "var(--f-body)",
+                      }}
+                    >
+                      {c.author}
+                    </span>
+                    <span
+                      style={{
+                        fontSize: 11,
+                        color: "var(--text-3)",
+                        fontFamily: "var(--f-body)",
+                      }}
+                    >
+                      {fmtRelTime(c.createdAt)}
+                    </span>
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 14,
+                      color: "var(--text-2)",
+                      lineHeight: 1.5,
+                      fontFamily: "var(--f-body)",
+                    }}
+                  >
+                    {c.text}
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </motion.div>
+    </>
+  );
+}
+
+// ── Social rail (right side, overlaid on video) ───────────────────────
+function SocialRail({
+  likes,
+  shares,
+  commentCount,
+  liked,
+  onLike,
+  onComment,
+  onShare,
+}: {
+  likes: number;
+  shares: number;
+  commentCount: number;
+  liked: boolean;
+  onLike: () => void;
+  onComment: () => void;
+  onShare: () => void;
+}) {
+  return (
+    <div
+      style={{
+        position: "absolute",
+        right: 12,
+        bottom: 96,
+        zIndex: 25,
+        display: "flex",
+        flexDirection: "column",
+        gap: 18,
+        alignItems: "center",
+        pointerEvents: "auto",
+      }}
+    >
+      <RailButton
+        ariaLabel={liked ? "Unlike" : "Like"}
+        onClick={onLike}
+        count={fmtCount(likes)}
+        active={liked}
+      >
+        <svg viewBox="0 0 24 24" width={26} height={26} aria-hidden>
+          <path
+            d="M12 20.7s-7.2-4.35-9.3-9A4.8 4.8 0 0 1 12 6.4a4.8 4.8 0 0 1 9.3 5.3c-2.1 4.65-9.3 9-9.3 9z"
+            fill={liked ? "#ff4d6d" : "none"}
+            stroke={liked ? "#ff4d6d" : "currentColor"}
+            strokeWidth="1.8"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </RailButton>
+      <RailButton
+        ariaLabel="Comments"
+        onClick={onComment}
+        count={fmtCount(commentCount)}
+      >
+        <svg viewBox="0 0 24 24" width={26} height={26} fill="none" aria-hidden>
+          <path
+            d="M4 5h16v10H8.5L4 19V5z"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </RailButton>
+      <RailButton
+        ariaLabel="Share"
+        onClick={onShare}
+        count={fmtCount(shares)}
+      >
+        <svg viewBox="0 0 24 24" width={24} height={24} fill="none" aria-hidden>
+          <circle cx="18" cy="5" r="2.5" stroke="currentColor" strokeWidth="1.8" />
+          <circle cx="6" cy="12" r="2.5" stroke="currentColor" strokeWidth="1.8" />
+          <circle cx="18" cy="19" r="2.5" stroke="currentColor" strokeWidth="1.8" />
+          <path
+            d="M8.3 10.7l7.4-4.4M8.3 13.3l7.4 4.4"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+          />
+        </svg>
+      </RailButton>
+    </div>
+  );
+}
+
+function RailButton({
+  onClick,
+  ariaLabel,
+  count,
+  active,
+  children,
+}: {
+  onClick: () => void;
+  ariaLabel: string;
+  count: string;
+  active?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      aria-label={ariaLabel}
+      style={{
+        background: "transparent",
+        border: "none",
+        padding: 0,
+        cursor: "pointer",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: 4,
+        color: "#fff",
+        WebkitTapHighlightColor: "transparent",
+        filter: "drop-shadow(0 2px 6px rgba(0,0,0,0.45))",
+      }}
+    >
+      <div
+        style={{
+          width: 46,
+          height: 46,
+          borderRadius: 23,
+          background: "rgba(20,20,20,0.42)",
+          backdropFilter: "blur(10px)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: active ? "#ff4d6d" : "#fff",
+        }}
+      >
+        {children}
+      </div>
+      <span
+        style={{
+          fontSize: 12,
+          fontWeight: 600,
+          fontFamily: "var(--f-body)",
+          fontVariantNumeric: "tabular-nums",
+          letterSpacing: 0.2,
+        }}
+      >
+        {count}
+      </span>
+    </button>
+  );
+}
+
 // ── Pill button (frosted glass, overlaid on dark video) ───────────────
 function PillBtn({
   onClick,
@@ -391,6 +866,7 @@ function PillBtn({
         justifyContent: "center",
         cursor: "pointer",
         WebkitTapHighlightColor: "transparent",
+        pointerEvents: "auto",
       }}
     >
       {children}
@@ -742,7 +1218,7 @@ function SourcesSection({
 }
 
 // ── Article content (dynamic) ─────────────────────────────────────────
-function ArticleContent({ course }: { course: ParsedCourse }) {
+function ArticleContent({ course, onCreateCourse }: { course: ParsedCourse; onCreateCourse: () => void }) {
   const { title, chapters, sources, totalReadMin } = course;
   const [highlightedSource, setHighlightedSource] = useState<number | null>(null);
   const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -898,6 +1374,7 @@ function ArticleContent({ course }: { course: ParsedCourse }) {
           {title}
         </h3>
         <button
+          onClick={onCreateCourse}
           style={{
             width: "100%",
             height: 52,
@@ -919,71 +1396,339 @@ function ArticleContent({ course }: { course: ParsedCourse }) {
   );
 }
 
-// phase "video"  → video visible, article locked
-// phase "pivot"  → video gone, article at top but still locked — decision point
-// phase "reading" → article freely scrollable
-type Phase = "video" | "pivot" | "reading";
+// ── End-of-feed card (shown over video when no more videos to scroll to) ──
+function EndOfFeedCard({
+  onCreate,
+  onBack,
+  canGoBack,
+}: {
+  onCreate: () => void;
+  onBack: () => void;
+  canGoBack: boolean;
+}) {
+  return (
+    <motion.div
+      initial={{ y: "100%" }}
+      animate={{ y: 0 }}
+      exit={{ y: "100%" }}
+      transition={{ duration: 0.32, ease: [0.32, 0.72, 0, 1] as [number, number, number, number] }}
+      style={{
+        position: "absolute",
+        inset: 0,
+        zIndex: 40,
+        background: "linear-gradient(180deg, rgba(10,10,10,0.92), rgba(10,10,10,0.98))",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "32px 28px",
+        textAlign: "center",
+        color: "#fff",
+        gap: 16,
+      }}
+    >
+      <div
+        style={{
+          width: 56,
+          height: 56,
+          borderRadius: 28,
+          background: "rgba(255,255,255,0.1)",
+          border: "1px solid rgba(255,255,255,0.18)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          marginBottom: 4,
+        }}
+      >
+        <svg viewBox="0 0 24 24" fill="none" width={24} height={24} aria-hidden>
+          <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+        </svg>
+      </div>
+      <div
+        style={{
+          fontFamily: "var(--f-head)",
+          fontSize: 22,
+          fontWeight: 500,
+          letterSpacing: "-0.02em",
+        }}
+      >
+        You&apos;re all caught up
+      </div>
+      <div
+        style={{
+          fontSize: 14,
+          color: "rgba(255,255,255,0.7)",
+          fontFamily: "var(--f-body)",
+          lineHeight: 1.5,
+          maxWidth: 260,
+        }}
+      >
+        You&apos;ve watched every video in your feed. Create a new course to keep learning.
+      </div>
+      <button
+        onClick={onCreate}
+        style={{
+          marginTop: 8,
+          height: 50,
+          padding: "0 22px",
+          minWidth: 200,
+          borderRadius: 25,
+          border: "none",
+          background: "#FAF7F0",
+          color: "#0B0907",
+          fontFamily: "var(--f-body)",
+          fontWeight: 600,
+          fontSize: 15,
+          cursor: "pointer",
+        }}
+      >
+        Create a new video
+      </button>
+      {canGoBack && (
+        <button
+          onClick={onBack}
+          style={{
+            marginTop: 4,
+            background: "transparent",
+            border: "none",
+            color: "rgba(255,255,255,0.75)",
+            fontFamily: "var(--f-body)",
+            fontSize: 13,
+            cursor: "pointer",
+            padding: 8,
+          }}
+        >
+          ↑ Swipe up to go back
+        </button>
+      )}
+    </motion.div>
+  );
+}
+
+type View = "video" | "reading";
+
+const SEEN_VIDEOS_KEY = "gradium.seenVideos";
+const FEED_DIRECTION_KEY = "gradium.feedDirection";
+
+function readSeenVideos(): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.sessionStorage.getItem(SEEN_VIDEOS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeSeenVideos(ids: string[]): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(SEEN_VIDEOS_KEY, JSON.stringify(ids));
+  } catch {
+    // storage unavailable
+  }
+}
 
 // ── Main component ────────────────────────────────────────────────────
-export function CourseViewA({ course }: { course: ParsedCourse }) {
-  const [isPlaying, setIsPlaying] = useState(false);
+export function CourseViewA({ course, courseId }: { course: ParsedCourse; courseId: string }) {
+  const [isPlaying, setIsPlaying] = useState(true);
   const [progress, setProgress] = useState(0);
-  const [phase, setPhase] = useState<Phase>("video");
+  const [view, setView] = useState<View>("video");
   const [showShare, setShowShare] = useState(false);
+  const [showComments, setShowComments] = useState(false);
+  const [socials, setSocials] = useState<Socials>({ likes: 0, shares: 0, comments: [] });
+  const [liked, setLiked] = useState(false);
   const [readProgress, setReadProgress] = useState(0);
-  const articleRef = useRef<HTMLDivElement>(null);
-  const outerRef = useRef<HTMLDivElement>(null);
-  const phaseRef = useRef<Phase>("video");
-  const touchStartY = useRef(0);
-  const lastPhaseChange = useRef(0); // ms timestamp — absorbs inertia bleed
-  const router = useRouter();
-
-  // keep ref in sync so non-React event listeners always read current phase
-  useEffect(() => { phaseRef.current = phase; }, [phase]);
-
-  // Central transition — records timestamp so inertia events are ignored for 350 ms
-  const changePhase = useCallback((next: Phase) => {
-    lastPhaseChange.current = Date.now();
-    phaseRef.current = next;
-    if (next === "reading" && articleRef.current) {
-      articleRef.current.style.overflowY = "auto";
+  const [allCourseIds, setAllCourseIds] = useState<string[]>([]);
+  const [seenIds] = useState<string[]>(() => {
+    const current = readSeenVideos();
+    return current.includes(courseId) ? current : [...current, courseId];
+  });
+  const [showEndCard, setShowEndCard] = useState(false);
+  const [navDirection] = useState<"up" | "down" | null>(() => {
+    if (typeof window === "undefined") return null;
+    const d = window.sessionStorage.getItem(FEED_DIRECTION_KEY);
+    if (d === "up" || d === "down") {
+      window.sessionStorage.removeItem(FEED_DIRECTION_KEY);
+      return d;
     }
-    setPhase(next);
+    return null;
+  });
+
+  // Load list of available courses
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/courses`)
+      .then((r) => r.json())
+      .then((data: { ids?: unknown }) => {
+        if (cancelled) return;
+        const ids = Array.isArray(data.ids)
+          ? data.ids.filter((x): x is string => typeof x === "string")
+          : [];
+        setAllCourseIds(ids);
+      })
+      .catch(() => {
+        if (!cancelled) setAllCourseIds([]);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  // Non-passive touch handler — manages all three phases
+  // Persist seen videos to sessionStorage when the set changes
+  useEffect(() => {
+    writeSeenVideos(seenIds);
+  }, [seenIds]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/course/${encodeURIComponent(courseId)}/socials`)
+      .then((r) => r.json())
+      .then((data: Partial<Socials>) => {
+        if (cancelled) return;
+        setSocials({
+          likes: typeof data.likes === "number" ? data.likes : 0,
+          shares: typeof data.shares === "number" ? data.shares : 0,
+          comments: Array.isArray(data.comments) ? data.comments : [],
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setSocials({ likes: 0, shares: 0, comments: [] });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [courseId]);
+
+  const handleLike = useCallback(() => {
+    setLiked((prev) => {
+      const next = !prev;
+      setSocials((s) => ({ ...s, likes: Math.max(0, s.likes + (next ? 1 : -1)) }));
+      return next;
+    });
+  }, []);
+
+  const handleShare = useCallback(() => {
+    setShowShare(true);
+    setSocials((s) => ({ ...s, shares: s.shares + 1 }));
+  }, []);
+
+  const handleOpenComments = useCallback(() => setShowComments(true), []);
+  const articleRef = useRef<HTMLDivElement>(null);
+  const outerRef = useRef<HTMLDivElement>(null);
+  const videoPaneRef = useRef<HTMLDivElement>(null);
+  const viewRef = useRef<View>("video");
+  const touchStartX = useRef(0);
+  const touchStartY = useRef(0);
+  const didSwipe = useRef(false);
+  const wheelLockRef = useRef(false);
+  const navigatingRef = useRef(false);
+  const router = useRouter();
+
+  // If we just arrived via a feed scroll, swallow the tail of that gesture
+  // so it doesn't immediately trigger another navigation on the new page.
+  useEffect(() => {
+    if (navDirection === null) return;
+    wheelLockRef.current = true;
+    const id = window.setTimeout(() => {
+      wheelLockRef.current = false;
+    }, 900);
+    return () => window.clearTimeout(id);
+  }, [navDirection]);
+
+  const seenIdsRef = useRef<string[]>([]);
+  const allIdsRef = useRef<string[]>([]);
+  useEffect(() => { seenIdsRef.current = seenIds; }, [seenIds]);
+  useEffect(() => { allIdsRef.current = allCourseIds; }, [allCourseIds]);
+
+  const goToNextVideo = useCallback(() => {
+    if (navigatingRef.current) return;
+    const seen = seenIdsRef.current;
+    const all = allIdsRef.current;
+    const idx = seen.indexOf(courseId);
+    let nextId: string | null = null;
+
+    if (idx >= 0 && idx < seen.length - 1) {
+      nextId = seen[idx + 1];
+    } else {
+      const unseen = all.find((id) => !seen.includes(id));
+      if (unseen) nextId = unseen;
+    }
+
+    if (nextId) {
+      navigatingRef.current = true;
+      if (typeof window !== "undefined") {
+        window.sessionStorage.setItem(FEED_DIRECTION_KEY, "down");
+      }
+      router.push(`/course/${encodeURIComponent(nextId)}`);
+    } else {
+      setShowEndCard(true);
+    }
+  }, [courseId, router]);
+
+  const goToPrevVideo = useCallback(() => {
+    if (navigatingRef.current) return;
+    if (showEndCard) {
+      setShowEndCard(false);
+      return;
+    }
+    const seen = seenIdsRef.current;
+    const idx = seen.indexOf(courseId);
+    if (idx > 0) {
+      navigatingRef.current = true;
+      if (typeof window !== "undefined") {
+        window.sessionStorage.setItem(FEED_DIRECTION_KEY, "up");
+      }
+      router.push(`/course/${encodeURIComponent(seen[idx - 1])}`);
+    }
+  }, [courseId, router, showEndCard]);
+
+  useEffect(() => { viewRef.current = view; }, [view]);
+
+  // Horizontal touch navigation:
+  // - swipe left on video => open reading panel
+  // - swipe right on reading => return to video
   useEffect(() => {
     const el = outerRef.current;
     if (!el) return;
 
     function onTouchStart(e: TouchEvent) {
+      didSwipe.current = false;
+      touchStartX.current = e.touches[0].clientX;
       touchStartY.current = e.touches[0].clientY;
     }
 
     function onTouchMove(e: TouchEvent) {
-      if (Date.now() - lastPhaseChange.current < 350) { e.preventDefault(); return; }
+      if (didSwipe.current) return;
+      const dx = e.touches[0].clientX - touchStartX.current;
+      const dy = e.touches[0].clientY - touchStartY.current;
+      const isHorizontal = Math.abs(dx) > Math.abs(dy) + 8;
+      const isVertical = Math.abs(dy) > Math.abs(dx) + 8;
 
-      const dy = touchStartY.current - e.touches[0].clientY;
-      const cur = phaseRef.current;
+      const cur = viewRef.current;
 
-      if (cur === "reading") return;
-
-      if (cur === "video" && dy > 12) {
+      if (isVertical && cur === "video" && Math.abs(dy) > 56) {
         e.preventDefault();
-        changePhase("reading");
-        touchStartY.current = e.touches[0].clientY;
+        didSwipe.current = true;
+        if (dy < 0) goToNextVideo();
+        else goToPrevVideo();
         return;
       }
 
-      if (cur === "pivot") {
-        if (dy > 12) {
-          changePhase("reading");
-          touchStartY.current = e.touches[0].clientY;
-        } else if (dy < -12) {
-          e.preventDefault();
-          changePhase("video");
-          touchStartY.current = e.touches[0].clientY;
-        }
+      if (!isHorizontal || Math.abs(dx) < 36) return;
+
+      if (cur === "video" && dx < 0) {
+        e.preventDefault();
+        didSwipe.current = true;
+        setView("reading");
+        return;
+      }
+      if (cur === "reading" && dx > 0) {
+        e.preventDefault();
+        didSwipe.current = true;
+        setView("video");
       }
     }
 
@@ -993,37 +1738,36 @@ export function CourseViewA({ course }: { course: ParsedCourse }) {
       el.removeEventListener("touchstart", onTouchStart);
       el.removeEventListener("touchmove", onTouchMove);
     };
-  }, [changePhase]);
+  }, [goToNextVideo, goToPrevVideo]);
 
-  // Wheel (desktop) — same three-phase logic + inertia guard
-  const handleWheel = useCallback((e: React.WheelEvent) => {
-    if (Date.now() - lastPhaseChange.current < 350) return;
-    const cur = phaseRef.current;
+  // Wheel/trackpad scroll on the video pane → navigate between videos
+  useEffect(() => {
+    const el = videoPaneRef.current;
+    if (!el) return;
 
-    // When already at the top of the article, an upward wheel gesture should
-    // always reopen the video, even if we didn't settle into "pivot" yet.
-    if (cur === "reading") {
-      if (e.deltaY < 0 && (articleRef.current?.scrollTop ?? 0) <= 1) {
-        changePhase("video");
-      }
-      return;
+    function onWheel(e: WheelEvent) {
+      if (viewRef.current !== "video") return;
+      if (Math.abs(e.deltaY) < 20) return;
+      e.preventDefault();
+      if (wheelLockRef.current) return;
+      wheelLockRef.current = true;
+      if (e.deltaY > 0) goToNextVideo();
+      else goToPrevVideo();
+      window.setTimeout(() => { wheelLockRef.current = false; }, 600);
     }
 
-    if (cur === "video" && e.deltaY > 0) { changePhase("reading"); return; }
-    if (cur === "pivot" && e.deltaY > 0) { changePhase("reading"); return; }
-    if (cur === "pivot" && e.deltaY < 0) { changePhase("video"); return; }
-  }, [changePhase]);
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => {
+      el.removeEventListener("wheel", onWheel);
+    };
+  }, [goToNextVideo, goToPrevVideo]);
 
-  // Article scroll — track progress; reaching top snaps back to pivot
+  // Article scroll — track reading progress
   const handleScroll = useCallback((e: UIEvent<HTMLDivElement>) => {
-    if (Date.now() - lastPhaseChange.current < 350) return;
     const el = e.currentTarget;
     const scrollTop = el.scrollTop;
-    if (scrollTop <= 1 && phaseRef.current === "reading") {
-      phaseRef.current = "pivot";
-      setPhase("pivot");
-    }
     const total = el.scrollHeight - el.clientHeight;
+    if (scrollTop <= 1) setReadProgress(0);
     if (total > 0) setReadProgress(scrollTop / total);
   }, []);
 
@@ -1033,12 +1777,9 @@ export function CourseViewA({ course }: { course: ParsedCourse }) {
   return (
     <div
       ref={outerRef}
-      onWheel={handleWheel}
       style={{
         height: "100dvh",
         overflow: "hidden",
-        display: "flex",
-        flexDirection: "column",
         background: "var(--bg)",
         position: "relative",
       }}
@@ -1075,70 +1816,199 @@ export function CourseViewA({ course }: { course: ParsedCourse }) {
           zIndex: 30,
           padding: "10px 14px",
           display: "flex",
+          justifyContent: "center",
+          pointerEvents: "auto",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            background: "rgba(255,255,255,0.88)",
+            borderRadius: 999,
+            padding: 4,
+            backdropFilter: "blur(12px)",
+            WebkitBackdropFilter: "blur(12px)",
+            border: "1px solid rgba(255,255,255,0.65)",
+            boxShadow: "0 8px 24px rgba(0,0,0,0.16)",
+          }}
+        >
+          <button
+            onClick={() => router.push("/chat")}
+            style={{
+              height: 30,
+              padding: "0 12px",
+              borderRadius: 999,
+              border: "none",
+              background: "transparent",
+              color: "#2a2520",
+              fontSize: 12,
+              fontWeight: 600,
+              fontFamily: "var(--f-body)",
+              cursor: "pointer",
+            }}
+          >
+            Chat
+          </button>
+          <button
+            onClick={() => router.push(`/course/${courseId}`)}
+            style={{
+              height: 30,
+              padding: "0 12px",
+              borderRadius: 999,
+              border: "none",
+              background: "#2a2520",
+              color: "#fff",
+              fontSize: 12,
+              fontWeight: 600,
+              fontFamily: "var(--f-body)",
+              cursor: "pointer",
+            }}
+          >
+            Feed
+          </button>
+        </div>
+      </div>
+
+      {/* ── Horizontal view track */}
+      <div
+        style={{
+          height: "100%",
+          width: "200%",
+          display: "flex",
+          transform: view === "video" ? "translateX(0)" : "translateX(-50%)",
+          transition: "transform 0.38s cubic-bezier(0.4,0,0.2,1)",
+        }}
+      >
+        {/* Fullscreen video panel (first) */}
+        <div
+          ref={videoPaneRef}
+          style={{ width: "50%", height: "100%", position: "relative", overflow: "hidden" }}
+        >
+          <motion.div
+            key={courseId}
+            initial={
+              navDirection === "down"
+                ? { y: "100%" }
+                : navDirection === "up"
+                  ? { y: "-100%" }
+                  : { y: 0 }
+            }
+            animate={{ y: 0 }}
+            transition={{ duration: 0.36, ease: [0.32, 0.72, 0, 1] as [number, number, number, number] }}
+            style={{ position: "absolute", inset: 0 }}
+          >
+            <VideoBlock
+              courseId={courseId}
+              isPlaying={isPlaying}
+              progress={progress}
+              onTogglePlay={togglePlay}
+              onSeek={seek}
+            />
+            <SocialRail
+              likes={socials.likes}
+              shares={socials.shares}
+              commentCount={socials.comments.length}
+              liked={liked}
+              onLike={handleLike}
+              onComment={handleOpenComments}
+              onShare={handleShare}
+            />
+          </motion.div>
+
+          <AnimatePresence>
+            {showEndCard && (
+              <EndOfFeedCard
+                onCreate={() => router.push("/chat")}
+                onBack={goToPrevVideo}
+                canGoBack={seenIds.indexOf(courseId) > 0}
+              />
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* Reading panel (second) */}
+        <div
+          ref={articleRef}
+          onScroll={handleScroll}
+          className="no-scrollbar"
+          style={{
+            width: "50%",
+            height: "100%",
+            overflowY: "auto",
+            overflowX: "hidden",
+            scrollbarWidth: "none",
+            background: "var(--surface)",
+            paddingTop: 58,
+            boxShadow: "0 -8px 24px rgba(0,0,0,0.05)",
+            WebkitOverflowScrolling: "touch" as React.CSSProperties["WebkitOverflowScrolling"],
+          }}
+        >
+          <ArticleContent course={course} onCreateCourse={() => router.push("/chat")} />
+        </div>
+      </div>
+
+      <div
+        style={{
+          position: "absolute",
+          left: "50%",
+          bottom: 22,
+          transform: "translateX(-50%)",
+          zIndex: 35,
+          display: "flex",
+          gap: 8,
           alignItems: "center",
-          gap: 10,
+          borderRadius: 999,
+          padding: "7px 10px",
+          background: view === "reading" ? "rgba(0,0,0,0.86)" : "rgba(255,255,255,0.9)",
+          border: view === "reading" ? "1px solid rgba(255,255,255,0.16)" : "1px solid rgba(0,0,0,0.12)",
+          backdropFilter: "blur(6px)",
         }}
       >
-        <PillBtn ariaLabel="Back" onClick={() => router.push("/chat")}>
-          <svg viewBox="0 0 24 24" fill="none" width={20} height={20} aria-hidden>
-            <path d="M14 6l-6 6 6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </PillBtn>
-        <div style={{ flex: 1 }} />
-        <PillBtn ariaLabel="Share" onClick={() => setShowShare(true)}>
-          <svg viewBox="0 0 24 24" fill="none" width={18} height={18} aria-hidden>
-            <circle cx="18" cy="5" r="2.5" stroke="currentColor" strokeWidth="1.7" />
-            <circle cx="6" cy="12" r="2.5" stroke="currentColor" strokeWidth="1.7" />
-            <circle cx="18" cy="19" r="2.5" stroke="currentColor" strokeWidth="1.7" />
-            <path d="M8.3 10.7l7.4-4.4M8.3 13.3l7.4 4.4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
-          </svg>
-        </PillBtn>
-      </div>
-
-      {/* ── Video section — collapses when leaving video phase */}
-      <div
-        style={{
-          height: phase === "video" ? "82%" : 0,
-          overflow: "hidden",
-          flexShrink: 0,
-          transition: "height 0.42s cubic-bezier(0.4,0,0.2,1)",
-        }}
-      >
-        <VideoBlock
-          isPlaying={isPlaying}
-          progress={progress}
-          onTogglePlay={togglePlay}
-          onSeek={seek} // also called by video's onTimeUpdate
+        <button
+          onClick={() => setView("video")}
+          aria-label="Show video panel"
+          style={{
+            width: 8,
+            height: 8,
+            borderRadius: "50%",
+            border: "none",
+            padding: 0,
+            cursor: "pointer",
+            background: view === "reading" ? "#FFFFFF" : "#0E0E0E",
+            opacity: view === "video" ? 1 : 0.45,
+          }}
         />
-      </div>
-
-      {/* ── Scrollable article */}
-      <div
-        ref={articleRef}
-        onScroll={handleScroll}
-        className="no-scrollbar"
-        style={{
-          flex: 1,
-          overflowY: phase === "reading" ? "auto" : "hidden",
-          overflowX: "hidden",
-          scrollbarWidth: "none",
-          background: "var(--surface)",
-          borderRadius: phase === "video" ? "24px 24px 0 0" : "0",
-          marginTop: phase === "video" ? -16 : 0,
-          position: "relative",
-          zIndex: 5,
-          boxShadow: "0 -8px 24px rgba(0,0,0,0.05)",
-          paddingTop: phase !== "video" ? 58 : 0,
-          transition: "border-radius 0.42s cubic-bezier(0.4,0,0.2,1), padding-top 0.42s cubic-bezier(0.4,0,0.2,1)",
-          WebkitOverflowScrolling: "touch" as React.CSSProperties["WebkitOverflowScrolling"],
-        }}
-      >
-        <ArticleContent course={course} />
+        <button
+          onClick={() => setView("reading")}
+          aria-label="Show text panel"
+          style={{
+            width: 8,
+            height: 8,
+            borderRadius: "50%",
+            border: "none",
+            padding: 0,
+            cursor: "pointer",
+            background: view === "reading" ? "#FFFFFF" : "#0E0E0E",
+            opacity: view === "reading" ? 1 : 0.45,
+          }}
+        />
       </div>
 
       {/* ── Share modal */}
       <AnimatePresence>
         {showShare && <ShareModal onClose={() => setShowShare(false)} />}
+      </AnimatePresence>
+
+      {/* ── Comments modal */}
+      <AnimatePresence>
+        {showComments && (
+          <CommentsModal
+            comments={socials.comments}
+            onClose={() => setShowComments(false)}
+          />
+        )}
       </AnimatePresence>
     </div>
   );
