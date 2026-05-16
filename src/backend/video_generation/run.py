@@ -29,6 +29,7 @@ def _prepare_workspace(lesson_md: str) -> Workspace:
 
 def _build_prompt(workspace: Workspace, target_duration_seconds: int) -> str:
     instructions = _render_instructions(target_duration_seconds)
+    tools_src = REPO_ROOT / "src" / "backend" / "video_generation" / "tools"
     return (
         f"{instructions}\n\n"
         f"## This run\n\n"
@@ -36,9 +37,12 @@ def _build_prompt(workspace: Workspace, target_duration_seconds: int) -> str:
         f"- Lesson file: `inputs/lesson.md`.\n"
         f"- Final output: `outputs/final.mp4`.\n"
         f"- Target total duration: ~{target_duration_seconds} seconds.\n"
-        f"- The repository root with the tool modules is `{REPO_ROOT}` "
-        f"and is already accessible. Use `uv run --project {REPO_ROOT} python -m backend.video_generation.tools.<name> ...` "
-        f"to invoke any tool.\n"
+        f"- Repository root: `{REPO_ROOT}`.\n"
+        f"- Tool source code lives at `{tools_src}` (note the `src/` prefix). "
+        f"Do NOT look under `{REPO_ROOT}/backend/...` — it does not exist.\n"
+        f"- Invoke tools as Python modules: "
+        f"`uv run --project {REPO_ROOT} python -m backend.video_generation.tools.<name> ...` "
+        f"(the `src/` layout is configured in pyproject so the dotted path starts with `backend.`).\n"
         f"- When done, print the absolute path of `outputs/final.mp4` and stop.\n"
     )
 
