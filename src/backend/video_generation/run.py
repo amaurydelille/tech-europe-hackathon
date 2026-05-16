@@ -61,15 +61,10 @@ def _build_prompt(workspace: Workspace, target_duration_seconds: int) -> str:
         f"shared project lock. The venv at `{venv_python.parent.parent}` already has every "
         f"dependency installed.\n"
         f"- When done, print `{final_path}` and stop.\n\n"
-        f"## Scope of this run (important)\n\n"
-        f"Everything you produce — anchors, intermediate images, audio, video clips, "
-        f"`script.json`, the final MP4 — goes under `{workspace.root}`. "
-        f"Do NOT read, copy, reuse, or even glance at any other directory under "
-        f"`{workspace.root.parent}` (previous runs). Even if a sibling run is about "
-        f"the same lesson topic, treat it as if it did not exist: do not lift assets, "
-        f"prompts, or `script.json` entries from it. Start fresh from `inputs/lesson.md` "
-        f"and the anchors you generate in this run. The only inputs that matter are "
-        f"the lesson file and the assets you produce here.\n"
+        f"## Scope of this run\n\n"
+        f"Ignore every sibling directory under `{workspace.root.parent}` — even if a "
+        f"previous run covered the same lesson, do not read or reuse anything from it. "
+        f"Start fresh from `inputs/lesson.md`.\n"
     )
 
 
