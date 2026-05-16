@@ -1,0 +1,11 @@
+pyproject.toml
+uv.lock
+.python-version
+.venv
+src/backend
+assets
+tmp
+lessons
+EXAMPLE_LESSON.md
+.mypy_cache
+.pytest_cache
