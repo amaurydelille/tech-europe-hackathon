@@ -12,6 +12,7 @@ import { useRouter } from "next/navigation";
 import { QRCodeSVG } from "qrcode.react";
 import { InlineMath, BlockMath } from "react-katex";
 import type { ParsedCourse, Block, ListItem } from "@/lib/parseCourse";
+import { setFeedDirection } from "@/lib/feedDirection";
 
 // ── helpers ───────────────────────────────────────────────────────────
 function fmtSec(s: number) {
@@ -1590,7 +1591,6 @@ function EndOfFeedCard({
 type View = "video" | "reading";
 
 const SEEN_VIDEOS_KEY = "gradium.seenVideos";
-const FEED_DIRECTION_KEY = "gradium.feedDirection";
 
 function readSeenVideos(): string[] {
   if (typeof window === "undefined") return [];
@@ -1629,15 +1629,6 @@ export function CourseViewA({ course, courseId }: { course: ParsedCourse; course
     return current.includes(courseId) ? current : [...current, courseId];
   });
   const [showEndCard, setShowEndCard] = useState(false);
-  const [navDirection] = useState<"up" | "down" | null>(() => {
-    if (typeof window === "undefined") return null;
-    const d = window.sessionStorage.getItem(FEED_DIRECTION_KEY);
-    if (d === "up" || d === "down") {
-      window.sessionStorage.removeItem(FEED_DIRECTION_KEY);
-      return d;
-    }
-    return null;
-  });
 
   // Load list of available courses
   useEffect(() => {
@@ -1709,16 +1700,15 @@ export function CourseViewA({ course, courseId }: { course: ParsedCourse; course
   const navigatingRef = useRef(false);
   const router = useRouter();
 
-  // If we just arrived via a feed scroll, swallow the tail of that gesture
-  // so it doesn't immediately trigger another navigation on the new page.
+  // Swallow trackpad inertia for the first 500 ms after mount so a long
+  // scroll on the previous page can't immediately page through this one.
   useEffect(() => {
-    if (navDirection === null) return;
     wheelLockRef.current = true;
     const id = window.setTimeout(() => {
       wheelLockRef.current = false;
     }, 500);
     return () => window.clearTimeout(id);
-  }, [navDirection]);
+  }, []);
 
   const seenIdsRef = useRef<string[]>([]);
   const allIdsRef = useRef<string[]>([]);
@@ -1761,9 +1751,7 @@ export function CourseViewA({ course, courseId }: { course: ParsedCourse; course
 
     if (nextId) {
       navigatingRef.current = true;
-      if (typeof window !== "undefined") {
-        window.sessionStorage.setItem(FEED_DIRECTION_KEY, "down");
-      }
+      setFeedDirection("down");
       router.push(`/course/${encodeURIComponent(nextId)}`);
     } else {
       setShowEndCard(true);
@@ -1783,9 +1771,7 @@ export function CourseViewA({ course, courseId }: { course: ParsedCourse; course
     const nextId = all.find((id) => id !== courseId) ?? all[0] ?? null;
     if (nextId && nextId !== courseId) {
       navigatingRef.current = true;
-      if (typeof window !== "undefined") {
-        window.sessionStorage.setItem(FEED_DIRECTION_KEY, "down");
-      }
+      setFeedDirection("down");
       router.push(`/course/${encodeURIComponent(nextId)}`);
     } else {
       setShowEndCard(false);
@@ -1805,9 +1791,7 @@ export function CourseViewA({ course, courseId }: { course: ParsedCourse; course
     const idx = seen.indexOf(courseId);
     if (idx > 0) {
       navigatingRef.current = true;
-      if (typeof window !== "undefined") {
-        window.sessionStorage.setItem(FEED_DIRECTION_KEY, "up");
-      }
+      setFeedDirection("up");
       router.push(`/course/${encodeURIComponent(seen[idx - 1])}`);
     }
   }, [courseId, router, showEndCard]);
@@ -2041,19 +2025,7 @@ export function CourseViewA({ course, courseId }: { course: ParsedCourse; course
             overscrollBehavior: "contain",
           }}
         >
-          <motion.div
-            key={courseId}
-            initial={
-              navDirection === "down"
-                ? { y: "100%" }
-                : navDirection === "up"
-                  ? { y: "-100%" }
-                  : { y: 0 }
-            }
-            animate={{ y: 0 }}
-            transition={{ duration: 0.36, ease: [0.32, 0.72, 0, 1] as [number, number, number, number] }}
-            style={{ position: "absolute", inset: 0, willChange: "transform" }}
-          >
+          <div style={{ position: "absolute", inset: 0 }}>
             <VideoBlock
               courseId={courseId}
               isPlaying={isPlaying}
@@ -2070,7 +2042,7 @@ export function CourseViewA({ course, courseId }: { course: ParsedCourse; course
               onComment={handleOpenComments}
               onShare={handleShare}
             />
-          </motion.div>
+          </div>
 
           <AnimatePresence>
             {showEndCard && (
