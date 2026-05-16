@@ -12,10 +12,14 @@ from .workspace import Workspace, create_workspace
 
 INSTRUCTIONS_PATH = Path(__file__).parent / "instructions.md"
 DEFAULT_CODEX_MODEL: str | None = None  # let codex use its config default
+DEFAULT_TARGET_DURATION_SECONDS = 60
 
 
-def _read_instructions() -> str:
-    return INSTRUCTIONS_PATH.read_text()
+def _render_instructions(target_duration_seconds: int) -> str:
+    template = INSTRUCTIONS_PATH.read_text()
+    return template.replace(
+        "{{TARGET_DURATION_SECONDS}}", str(target_duration_seconds)
+    )
 
 
 def _prepare_workspace(lesson_md: str) -> Workspace:
@@ -24,14 +28,15 @@ def _prepare_workspace(lesson_md: str) -> Workspace:
     return workspace
 
 
-def _build_prompt(workspace: Workspace) -> str:
-    instructions = _read_instructions()
+def _build_prompt(workspace: Workspace, target_duration_seconds: int) -> str:
+    instructions = _render_instructions(target_duration_seconds)
     return (
         f"{instructions}\n\n"
         f"## This run\n\n"
         f"- Working directory: `{workspace.root}` (you are already cd'd into it).\n"
         f"- Lesson file: `inputs/lesson.md`.\n"
         f"- Final output: `outputs/final.mp4`.\n"
+        f"- Target total duration: ~{target_duration_seconds} seconds.\n"
         f"- The repository root with the tool modules is `{REPO_ROOT}` "
         f"and is already accessible. Use `uv run --project {REPO_ROOT} python -m backend.video_generation.tools.<name> ...` "
         f"to invoke any tool.\n"
@@ -58,6 +63,7 @@ def generate_video(
     lesson_md: str,
     out_path: Path | None = None,
     *,
+    target_duration_seconds: int = DEFAULT_TARGET_DURATION_SECONDS,
     model: str | None = DEFAULT_CODEX_MODEL,
     extra_env: dict | None = None,
 ) -> Path:
@@ -66,6 +72,7 @@ def generate_video(
     Args:
         lesson_md: Lesson content as a markdown string.
         out_path: Where to copy the final MP4. If None, leave it under the workspace.
+        target_duration_seconds: Target length of the finished video in seconds.
         model: Optional codex model override (e.g. "gpt-5-codex").
         extra_env: Extra env vars to pass to codex.
 
@@ -78,7 +85,7 @@ def generate_video(
         raise RuntimeError("`ffmpeg` not found on PATH")
 
     workspace = _prepare_workspace(lesson_md)
-    prompt = _build_prompt(workspace)
+    prompt = _build_prompt(workspace, target_duration_seconds)
 
     env = os.environ.copy()
     if extra_env:
@@ -130,6 +137,12 @@ def _main(argv: list[str] | None = None) -> int:
         default=DEFAULT_CODEX_MODEL,
         help="Codex model id (passed via `codex exec -m`).",
     )
+    parser.add_argument(
+        "--duration",
+        type=int,
+        default=DEFAULT_TARGET_DURATION_SECONDS,
+        help="Target total video length in seconds.",
+    )
     args = parser.parse_args(argv)
 
     if not args.lesson.is_file():
@@ -139,6 +152,7 @@ def _main(argv: list[str] | None = None) -> int:
     final = generate_video(
         lesson_md=args.lesson.read_text(),
         out_path=args.out,
+        target_duration_seconds=args.duration,
         model=args.model,
     )
     print(str(final))

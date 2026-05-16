@@ -27,7 +27,7 @@ When `outputs/final.mp4` exists and is valid, print the absolute path to that fi
 
 ### Step 1 — Read the lesson
 
-Read `inputs/lesson.md`. Note the key subjects, settings, and characters that will recur. **Target a total finished length of ~60 seconds** (acceptable range: 55–65 seconds). Plan the number of shots and the narration density to hit this target.
+Read `inputs/lesson.md`. Note the key subjects, settings, and characters that will recur. **Target a total finished length of ~{{TARGET_DURATION_SECONDS}} seconds** (acceptable range: ±5 seconds). Plan the number of shots and the narration density to hit this target.
 
 ### Step 2 — Plan the anchors
 
