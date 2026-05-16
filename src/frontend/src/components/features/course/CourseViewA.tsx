@@ -198,7 +198,7 @@ function VideoBlock({ courseId, isPlaying, progress, onTogglePlay, onSeek }: Vid
             alignItems: "flex-end",
           }}
         >
-          <button
+          <PillBtn
             onClick={() => {
               if (isSourceOpen) {
                 closeSourcePopup();
@@ -209,29 +209,10 @@ function VideoBlock({ courseId, isPlaying, progress, onTogglePlay, onSeek }: Vid
               resumeAfterPopupRef.current = wasPlaying;
               if (wasPlaying) videoRef.current?.pause();
             }}
-            style={{
-              border: "1px solid rgba(255,255,255,0.32)",
-              borderRadius: 999,
-              background: "rgba(20,20,20,0.72)",
-              color: "#fff",
-              fontSize: 13,
-              fontWeight: 600,
-              padding: "8px 12px",
-              cursor: "pointer",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 8,
-              backdropFilter: "blur(10px)",
-              boxShadow: "0 8px 22px rgba(0,0,0,0.32)",
-              letterSpacing: 0.2,
-            }}
-            aria-label="Show source"
+            ariaLabel="Show source"
           >
-            <svg viewBox="0 0 24 24" width={16} height={16} fill="none" aria-hidden>
-              <circle cx="11" cy="11" r="6.5" stroke="currentColor" strokeWidth="1.8" />
-              <path d="M16 16l4 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-            </svg>
-          </button>
+            <span style={{ fontSize: 20, fontWeight: 700, lineHeight: 1 }}>!</span>
+          </PillBtn>
           {isSourceOpen && (
             <div
               style={{
@@ -1249,6 +1230,11 @@ export function CourseViewA({ course, courseId }: { course: ParsedCourse; course
           display: "flex",
           gap: 8,
           alignItems: "center",
+          borderRadius: 999,
+          padding: "7px 10px",
+          background: view === "reading" ? "rgba(0,0,0,0.86)" : "rgba(255,255,255,0.9)",
+          border: view === "reading" ? "1px solid rgba(255,255,255,0.16)" : "1px solid rgba(0,0,0,0.12)",
+          backdropFilter: "blur(6px)",
         }}
       >
         <button
@@ -1261,7 +1247,8 @@ export function CourseViewA({ course, courseId }: { course: ParsedCourse; course
             border: "none",
             padding: 0,
             cursor: "pointer",
-            background: view === "video" ? "#FFFFFF" : "rgba(255,255,255,0.45)",
+            background: view === "reading" ? "#FFFFFF" : "#0E0E0E",
+            opacity: view === "video" ? 1 : 0.45,
           }}
         />
         <button
@@ -1274,7 +1261,8 @@ export function CourseViewA({ course, courseId }: { course: ParsedCourse; course
             border: "none",
             padding: 0,
             cursor: "pointer",
-            background: view === "reading" ? "#FFFFFF" : "rgba(255,255,255,0.45)",
+            background: view === "reading" ? "#FFFFFF" : "#0E0E0E",
+            opacity: view === "reading" ? 1 : 0.45,
           }}
         />
       </div>
