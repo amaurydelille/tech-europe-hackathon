@@ -83,7 +83,9 @@ Read the JSON output to learn the true `duration` and use it when placing the sp
 
 **Two tiers of images.** The anchors from Step 3 are a small, frozen set (≤ 3) — the canon. On top of them, you'll generate **intermediate shots**: per-scene stills that depict a specific moment, framing, or composition for one segment of the video. Intermediate shots are unbounded in number — make one (or several) per shot as needed. Each one is normally anchored to the relevant ref via `--ref`, and most of them feed directly into `animate_image` to become a video segment. You can also pass an intermediate shot as `--ref` to a follow-up `gen_image` call when you want to evolve a composition while keeping continuity.
 
-**Default to animated stills, not Seedance video.** Seedance generation takes 1–3 minutes per clip; `animate_image` (a slow zoom on a still) takes ~1 second of ffmpeg time. Reserve real Seedance video for shots where you genuinely need motion the still cannot fake (water flowing, marching armies, gestures). For everything else — establishing shots, portraits, maps, atmospheric scenes — generate an intermediate still and animate it.
+**Default to animated stills, not Seedance video.** Seedance generation takes 1–3 minutes per clip; `animate_image` is near-instant (ffmpeg only, no API call). Reserve real Seedance video for shots where you genuinely need motion the still cannot fake (water flowing, marching armies, gestures). For everything else — establishing shots, portraits, maps, atmospheric scenes — generate an intermediate still and animate it.
+
+**How long each animated still should last.** Typical animated-still clips are **2–5 seconds** (`--duration`). Shorter than 2s feels rushed; longer than 5s makes the slow zoom feel static. Pick a duration that matches the narration sitting on top of that shot.
 
 **Time budget for Seedance.** The total wall-time of your `gen_video` clips should be **~{{SEEDANCE_PERCENT}}% of the target video duration** (about **{{SEEDANCE_SECONDS}} seconds** of Seedance footage in this run). Spend that budget on the shots where motion most carries the narrative; cover everything else with `animate_image`. Going over the budget is fine only if a shot genuinely cannot be staged any other way.
 
@@ -133,6 +135,15 @@ uv run python -m backend.video_generation.tools.gen_image \
 ```
 
 For each still shot that does **not** depict any anchor (e.g. an abstract title card), omit `--ref`.
+
+**Real images from the internet (allowed, with strict conditions).** For historically iconic subjects where a real photograph, painting, or artifact would be far more authentic than a generated illustration (e.g. a famous portrait, a museum artifact, a public-domain map), you may download the original image with `curl` and use it as an intermediate shot. Save it under `assets/image/iNNN.<ext>` and treat it like any other still (typically feeding it into `animate_image`).
+
+Hard conditions — break either of these and don't use the image:
+
+1. **No watermark, logo, or overlaid text of any kind.** Stock-photo previews, "© getty" overlays, or museum trailing-edge banners disqualify the image.
+2. **Very high quality.** At least 1500px on the short side, sharp, no compression artifacts, no JPEG noise. Low-resolution thumbnails are not acceptable.
+
+Reliable sources where watermark-free, high-quality images are common: Wikimedia Commons (`upload.wikimedia.org`), the Library of Congress, NASA, public museum open-access collections (Met, Smithsonian, Rijksmuseum). Avoid stock-photo sites, news/editorial CDNs, and Pinterest. Always verify the downloaded file with `ffprobe` (or `file`) and visually inspect it before using it.
 
 After every generation, apply the inspection checklist below. Don't fixate on perfection — if a shot is "good enough" after one regeneration, accept it and move on.
 
