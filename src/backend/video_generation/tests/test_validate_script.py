@@ -217,6 +217,36 @@ def test_timestamps_end_before_start_rejected() -> None:
         validate_script(script)
 
 
+def test_speech_sources_default_to_empty() -> None:
+    speech = _base_speech(0.0, 4.0, 0)
+    assert "sources" not in speech
+    script = {
+        "total_duration": 5.0,
+        "resolution": "480p",
+        "aspect": "16:9",
+        "entries": [speech, _base_video(0.0, 5.0, 0)],
+    }
+    result = validate_script(script)
+    assert result.entries[0].sources == []
+
+
+def test_speech_sources_parsed() -> None:
+    speech = _base_speech(0.0, 4.0, 0)
+    speech["sources"] = [
+        {"name": "Wikipedia — Crossing the Rubicon",
+         "url": "https://en.wikipedia.org/wiki/Crossing_the_Rubicon"},
+    ]
+    script = {
+        "total_duration": 5.0,
+        "resolution": "480p",
+        "aspect": "16:9",
+        "entries": [speech, _base_video(0.0, 5.0, 0)],
+    }
+    result = validate_script(script)
+    assert result.entries[0].sources[0].url.startswith("https://")
+    assert "Wikipedia" in result.entries[0].sources[0].name
+
+
 def test_validates_from_file(tmp_path: Path) -> None:
     script = {
         "total_duration": 5.0,

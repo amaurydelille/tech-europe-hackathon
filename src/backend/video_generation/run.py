@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 from .config import REPO_ROOT, config
@@ -46,13 +48,32 @@ def _prepare_workspace(lesson_md: str) -> Workspace:
     return workspace
 
 
-def _build_prompt(workspace: Workspace, target_duration_seconds: int) -> str:
+def _build_prompt(
+    workspace: Workspace,
+    target_duration_seconds: int,
+    title: str | None = None,
+    brainrot: bool = False,
+) -> str:
     instructions = _render_instructions(target_duration_seconds)
     tools_src = REPO_ROOT / "src" / "backend" / "video_generation" / "tools"
     lesson_path = workspace.inputs_dir / "lesson.md"
-    final_path = workspace.outputs_dir / "final.mp4"
-    final_srt_path = workspace.outputs_dir / "final.srt"
+    final_path = workspace.outputs_dir / "video.mp4"
+    final_srt_path = workspace.outputs_dir / "subtitles.srt"
+    final_sources_path = workspace.outputs_dir / "sources.json"
     venv_python = REPO_ROOT / ".venv" / "bin" / "python"
+    title_line = (
+        f"- Lesson title (use this verbatim for the title-card `animate_image --title`): {title!r}\n"
+        if title
+        else ""
+    )
+    brainrot_line = (
+        "- **Brainrot mode is ON** for this run: pass `--brainrot-mode` to **every** "
+        "`gen_tts` call (faster, more energetic delivery). The pipeline will also "
+        "composite the finished video onto a Subway-Surfers background with random "
+        "spins after you finish — you don't have to do that part yourself.\n"
+        if brainrot
+        else ""
+    )
     return (
         f"{instructions}\n\n"
         f"## This run\n\n"
@@ -62,12 +83,15 @@ def _build_prompt(workspace: Workspace, target_duration_seconds: int) -> str:
         f"- Assets directory (refs/audio/video/image and `script.json`): `{workspace.assets_dir}`\n"
         f"- Final video: `{final_path}`\n"
         f"- Final subtitles: `{final_srt_path}`\n"
+        f"- Final sources: `{final_sources_path}` (written by `stitch` from speech `sources`)\n"
         f"- Repository root: `{REPO_ROOT}` (source lives here; never modify it).\n"
         f"- Tool source: `{tools_src}` — note the `src/` prefix; do NOT look under "
         f"`{REPO_ROOT}/backend/...`.\n\n"
         f"### Run parameters\n\n"
-        f"- Target total duration: ~{target_duration_seconds} seconds.\n\n"
-        f"### Running tools\n\n"
+        f"- Target total duration: ~{target_duration_seconds} seconds.\n"
+        f"{title_line}"
+        f"{brainrot_line}"
+        f"\n### Running tools\n\n"
         f"Invoke each tool with the project's venv python directly: "
         f"`{venv_python} -m backend.video_generation.tools.<name> ...`. "
         f"Do **not** use `uv run` — parallel `uv run` calls serialize on a shared project lock. "
@@ -77,7 +101,8 @@ def _build_prompt(workspace: Workspace, target_duration_seconds: int) -> str:
         f"run covered the same lesson, do not read or reuse anything from it. Start fresh "
         f"from `inputs/lesson.md`.\n\n"
         f"### Termination\n\n"
-        f"When `{final_path}` and `{final_srt_path}` both exist, print both paths and stop.\n"
+        f"When `{final_path}`, `{final_srt_path}`, and `{final_sources_path}` all exist, "
+        f"print all three paths and stop.\n"
     )
 
 
@@ -101,7 +126,9 @@ def generate_video(
     lesson_md: str,
     out_dir: Path | None = None,
     *,
+    title: str | None = None,
     target_duration_seconds: int = config.target_duration_seconds,
+    brainrot: bool = False,
     model: str | None = DEFAULT_CODEX_MODEL,
     extra_env: dict | None = None,
 ) -> Path:
@@ -109,7 +136,7 @@ def generate_video(
 
     Args:
         lesson_md: Lesson content as a markdown string.
-        out_dir: Where to copy the finished `final.mp4` + `final.srt`. The
+        out_dir: Where to copy the finished `video.mp4` + `subtitles.srt` + `sources.json`. The
             directory is created if missing. If None, leave them under the
             workspace.
         target_duration_seconds: Target length of the finished video in seconds.
@@ -117,7 +144,7 @@ def generate_video(
         extra_env: Extra env vars to pass to codex.
 
     Returns:
-        Path to the directory containing `final.mp4` and `final.srt`.
+        Path to the directory containing `video.mp4`, `subtitles.srt`, and `sources.json`.
     """
     if shutil.which("codex") is None:
         raise RuntimeError("`codex` CLI not found on PATH")
@@ -125,58 +152,127 @@ def generate_video(
         raise RuntimeError("`ffmpeg` not found on PATH")
 
     workspace = _prepare_workspace(lesson_md)
-    prompt = _build_prompt(workspace, target_duration_seconds)
+    prompt = _build_prompt(
+        workspace, target_duration_seconds, title=title, brainrot=brainrot,
+    )
 
     env = os.environ.copy()
     if extra_env:
         env.update(extra_env)
 
-    cmd = _codex_command(workspace, model)
-    proc = subprocess.run(
-        cmd,
-        input=prompt,
+    # The codex sandbox blocks Chromium on macOS (Mach port denial), so we
+    # run a tiny HTTP server in *this* process that wraps `gen_map`. The
+    # sandboxed CLI client picks up the URL via `GEN_MAP_SERVER_URL` and
+    # delegates the render here, where Playwright has full permissions.
+    gen_map_server = subprocess.Popen(
+        [sys.executable, "-m", "backend.video_generation.tools.gen_map_server"],
+        stdout=subprocess.PIPE,
         text=True,
-        env=env,
     )
+    url_line = gen_map_server.stdout.readline()
+    if not url_line:
+        gen_map_server.wait(timeout=5)
+        raise RuntimeError("gen_map_server failed to start (no URL on stdout)")
+    env["GEN_MAP_SERVER_URL"] = json.loads(url_line)["url"]
+
+    cmd = _codex_command(workspace, model)
+    try:
+        proc = subprocess.run(
+            cmd,
+            input=prompt,
+            text=True,
+            env=env,
+        )
+    finally:
+        gen_map_server.terminate()
+        try:
+            gen_map_server.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            gen_map_server.kill()
     if proc.returncode != 0:
         raise RuntimeError(f"codex exec failed with code {proc.returncode}")
 
-    produced = workspace.outputs_dir / "final.mp4"
-    produced_srt = workspace.outputs_dir / "final.srt"
-    if not produced.is_file():
-        raise RuntimeError(
-            f"codex finished but no final video at {produced}. "
-            f"See {workspace.root / 'codex.last_message.txt'} for the agent's last message."
-        )
-    if not produced_srt.is_file():
-        raise RuntimeError(
-            f"codex finished but no subtitles at {produced_srt}. "
-            f"See {workspace.root / 'codex.last_message.txt'} for the agent's last message."
-        )
+    produced = workspace.outputs_dir / "video.mp4"
+    produced_srt = workspace.outputs_dir / "subtitles.srt"
+    produced_sources = workspace.outputs_dir / "sources.json"
+    for path, label in (
+        (produced, "video"),
+        (produced_srt, "subtitles"),
+        (produced_sources, "sources"),
+    ):
+        if not path.is_file():
+            raise RuntimeError(
+                f"codex finished but no {label} at {path}. "
+                f"See {workspace.root / 'codex.last_message.txt'} for the agent's last message."
+            )
+
+    if brainrot:
+        from .tools.brainrot_overlay import apply_brainrot
+
+        composited = workspace.outputs_dir / "video.brainrot.mp4"
+        apply_brainrot(foreground_video=produced, out_path=composited)
+        # Replace video.mp4 in place so downstream copies pick up the brainrot version.
+        composited.replace(produced)
 
     if out_dir is not None:
         out_dir = Path(out_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(produced, out_dir / "final.mp4")
-        shutil.copy2(produced_srt, out_dir / "final.srt")
+        shutil.copy2(produced, out_dir / "video.mp4")
+        shutil.copy2(produced_srt, out_dir / "subtitles.srt")
+        shutil.copy2(produced_sources, out_dir / "sources.json")
         return out_dir
     return workspace.outputs_dir
 
 
+def load_lesson(path: Path) -> tuple[str, str | None]:
+    """Load a lesson from either a `.md`/`.txt` file or a `.json` payload.
+
+    Returns ``(lesson_markdown, title_or_None)``. For JSON input, the schema
+    expected is ``{"title": "...", "full_markdown": "...", "references": [{"title", "url"}, ...]}``;
+    ``title`` and ``references`` are optional. References get appended as a
+    ``## Sources`` markdown section so the agent can attach them as source
+    citations to the relevant speech entries.
+    """
+    text = path.read_text()
+    if path.suffix.lower() != ".json":
+        return text, None
+    data = json.loads(text)
+    if not isinstance(data, dict) or "full_markdown" not in data:
+        raise ValueError(
+            f"{path}: JSON input must be an object with a 'full_markdown' field"
+        )
+    lesson = data["full_markdown"].rstrip()
+    refs = data.get("references") or []
+    if refs:
+        lesson += "\n\n## Sources\n\n"
+        for r in refs:
+            title = r.get("title") or r.get("name") or r.get("url")
+            url = r.get("url")
+            if not url:
+                continue
+            lesson += f"- [{title}]({url})\n"
+    json_title = data.get("title")
+    if json_title is not None and not isinstance(json_title, str):
+        raise ValueError(f"{path}: 'title' must be a string when present")
+    return lesson, (json_title or None)
+
+
 def _main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Generate a narrated video from a lesson markdown file."
+        description="Generate a narrated video from a lesson markdown or JSON file."
     )
     parser.add_argument(
         "lesson",
         type=Path,
-        help="Path to the lesson markdown file.",
+        help="Path to the lesson. Either a .md/.txt file, or a .json file with "
+             "'full_markdown' (string) and optional 'references' "
+             "([{title, url}]).",
     )
     parser.add_argument(
         "--out-dir",
         type=Path,
         default=None,
-        help="Optional destination directory. Will contain final.mp4 + final.srt.",
+        help="Optional destination directory. Will contain video.mp4 + subtitles.srt + sources.json.",
     )
     parser.add_argument(
         "--model",
@@ -190,19 +286,32 @@ def _main(argv: list[str] | None = None) -> int:
         default=config.target_duration_seconds,
         help="Target total video length in seconds.",
     )
+    parser.add_argument(
+        "--brainrot",
+        action="store_true",
+        help="Enable brainrot mode: faster TTS + final video composited onto a "
+             "Subway-Surfers background with random spins.",
+    )
     args = parser.parse_args(argv)
 
     if not args.lesson.is_file():
         print(f"lesson file not found: {args.lesson}", file=sys.stderr)
         return 1
 
+    lesson_md, lesson_title = load_lesson(args.lesson)
+    started = time.monotonic()
     final_dir = generate_video(
-        lesson_md=args.lesson.read_text(),
+        lesson_md=lesson_md,
         out_dir=args.out_dir,
+        title=lesson_title,
         target_duration_seconds=args.duration,
+        brainrot=args.brainrot,
         model=args.model,
     )
+    elapsed = time.monotonic() - started
     print(str(final_dir))
+    minutes, seconds = divmod(elapsed, 60)
+    print(f"Total time: {int(minutes)}m {seconds:.1f}s", file=sys.stderr)
     return 0
 
 
