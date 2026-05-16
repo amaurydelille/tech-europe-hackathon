@@ -8,5 +8,6 @@ export const ROUTES = {
   ONBOARDING: "/onboarding",
   CHAT: "/chat",
   GENERATE: "/generate",
+  DRAFT: "/draft",
   COURSE: "/course",
 } as const;

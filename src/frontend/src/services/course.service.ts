@@ -1,9 +1,9 @@
 import { fetcher } from "@/lib/fetcher";
-import type { Course, Persona } from "@/types";
+import type { Course, CourseOutput, OnboardingProfile } from "@/types";
 
 export const courseService = {
-  generate: (persona: Persona) =>
-    fetcher.post<Course>("/api/courses/generate", { persona }),
+  generate: (profile: OnboardingProfile) =>
+    fetcher.post<CourseOutput>("/courses/generation", profile),
 
   getById: (id: string) =>
     fetcher.get<Course>(`/api/courses/${id}`),

@@ -1,18 +1,40 @@
 import json
-import asyncio
 import logging
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import BackgroundTasks, FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from task_to_class import run
-from task_to_class.models import OnboardingData, CourseOutput
-from video_generation.run import generate_video
+try:
+    from .onboarding.app import ws_onboarding
+    from .task_to_class import run
+    from .task_to_class.models import CourseOutput, OnboardingData
+    from .video_generation.run import generate_video
+except ImportError:
+    from onboarding.app import ws_onboarding
+    from task_to_class import run
+    from task_to_class.models import CourseOutput, OnboardingData
+    from video_generation.run import generate_video
 
 log = logging.getLogger(__name__)
 
 app = FastAPI(title="Course Generation API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3001",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.add_api_websocket_route("/ws/onboarding", ws_onboarding)
 
 COURSE_OUTPUT_PATH = Path(__file__).parent / "output" / "course_output.json"
 

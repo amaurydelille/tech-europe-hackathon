@@ -3,6 +3,7 @@
 import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { ROUTES } from "@/constants";
+import { setPendingProfile } from "@/lib/courseDraftStore";
 import type { OnboardingProfile } from "@/types";
 
 type GlyphKind = "topic" | "goal" | "level" | "length" | "format";
@@ -185,6 +186,13 @@ interface SummaryViewProps {
 export function SummaryView({ onReset, profile }: SummaryViewProps) {
   const router = useRouter();
   const items = profile ? profileToItems(profile) : DEMO_ITEMS;
+  const canBegin = Boolean(profile);
+
+  function handleBegin() {
+    if (!profile) return;
+    setPendingProfile(profile);
+    router.push(ROUTES.GENERATE);
+  }
 
   return (
     <div
@@ -338,7 +346,8 @@ export function SummaryView({ onReset, profile }: SummaryViewProps) {
           Edit
         </button>
         <button
-          onClick={() => router.push(ROUTES.GENERATE)}
+          onClick={handleBegin}
+          disabled={!canBegin}
           style={{
             flex: 1,
             height: 56,
@@ -349,8 +358,9 @@ export function SummaryView({ onReset, profile }: SummaryViewProps) {
             fontFamily: "var(--f-body)",
             fontWeight: 600,
             fontSize: 16,
-            cursor: "pointer",
-            boxShadow: "0 8px 24px rgba(20,17,13,.18)",
+            cursor: canBegin ? "pointer" : "not-allowed",
+            opacity: canBegin ? 1 : 0.48,
+            boxShadow: canBegin ? "0 8px 24px rgba(20,17,13,.18)" : "none",
           }}
         >
           Begin

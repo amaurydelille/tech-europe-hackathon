@@ -1,19 +1,12 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { useCallback, useEffect, useState } from "react";
+import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { ROUTES } from "@/constants";
-
-const STEPS = [
-  { label: "Preparing your course…",         duration: 3200 },
-  { label: "Choosing the best examples…",    duration: 3200 },
-  { label: "Filming a quick video for you…", duration: 4000 },
-  { label: "Drawing a few diagrams…",        duration: 3800 },
-  { label: "Almost ready",                   duration: 3000 },
-] as const;
-
-const TOTAL_MS = STEPS.reduce((s, x) => s + x.duration, 0); // ~17 200 ms
+import { getPendingProfile, setDraft } from "@/lib/courseDraftStore";
+import { courseService } from "@/services/course.service";
+import type { OnboardingProfile } from "@/types";
 
 // ── Blob background ───────────────────────────────────────────────
 function BlobBg() {
@@ -39,6 +32,12 @@ function BlobBg() {
 // ── Animated orb ─────────────────────────────────────────────────
 function GenerationOrb() {
   const PARTICLES = 14;
+  const positionOnRing = (angle: number, radius: number) => {
+    const x = (Math.cos(angle) * radius).toFixed(4);
+    const y = (Math.sin(angle) * radius).toFixed(4);
+    return `translate(-50%, -50%) translate(${x}px, ${y}px)`;
+  };
+
   return (
     <div style={{ width: 220, height: 220, position: "relative" }}>
       {/* slowly rotating ring of particles */}
@@ -57,7 +56,7 @@ function GenerationOrb() {
               width: big ? 5 : 3, height: big ? 5 : 3,
               borderRadius: "50%",
               background: big ? "#B89968" : "#D4C9B4",
-              transform: `translate(-50%,-50%) translate(${Math.cos(angle) * r}px, ${Math.sin(angle) * r}px)`,
+              transform: positionOnRing(angle, r),
               animation: `tt-pulse-halo 2.4s ${i * 0.09}s ease-in-out infinite`,
             }} />
           );
@@ -80,7 +79,7 @@ function GenerationOrb() {
               borderRadius: "50%",
               background: "#B89968",
               opacity: 0.4,
-              transform: `translate(-50%,-50%) translate(${Math.cos(angle) * r}px, ${Math.sin(angle) * r}px)`,
+              transform: positionOnRing(angle, r),
             }} />
           );
         })}
@@ -119,65 +118,64 @@ function GenerationOrb() {
   );
 }
 
-// ── Step dots indicator ──────────────────────────────────────────
-function StepDots({ total, current }: { total: number; current: number }) {
-  return (
-    <div style={{ display: "flex", justifyContent: "center", gap: 5 }}>
-      {Array.from({ length: total }).map((_, i) => (
-        <div key={i} style={{
-          width: 18, height: 2, borderRadius: 2,
-          background: i <= current ? "var(--text)" : "var(--border)",
-          transition: "background 0.4s",
-        }} />
-      ))}
-    </div>
-  );
+function getErrorMessage(error: unknown) {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "object" && error && "message" in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === "string") return message;
+  }
+  return "Course generation failed. Please try again.";
 }
 
 // ── Main generate view ───────────────────────────────────────────
 export function GenerateView() {
-  const [step, setStep] = useState(0);
-  const [progress, setProgress] = useState(0);
-  const [done, setDone] = useState(false);
+  const [profile] = useState<OnboardingProfile | null>(() => getPendingProfile());
+  const [status, setStatus] = useState<"loading" | "error">("loading");
+  const [error, setError] = useState<string | null>(null);
   const router = useRouter();
-  const startRef = useRef(performance.now());
-  const rafRef = useRef<number>(0);
 
-  // smooth progress via rAF
-  useEffect(() => {
-    function tick() {
-      const elapsed = performance.now() - startRef.current;
-      const pct = Math.min(100, (elapsed / TOTAL_MS) * 100);
-      setProgress(pct);
+  const runGeneration = useCallback(async (nextProfile: OnboardingProfile) => {
+    setStatus("loading");
+    setError(null);
 
-      // advance step based on elapsed time
-      let acc = 0;
-      let s = 0;
-      for (const st of STEPS) {
-        acc += st.duration;
-        if (elapsed < acc) break;
-        s++;
-      }
-      setStep(Math.min(s, STEPS.length - 1));
-
-      if (pct >= 100) {
-        setDone(true);
-        return;
-      }
-      rafRef.current = requestAnimationFrame(tick);
+    try {
+      const output = await courseService.generate(nextProfile);
+      setDraft(output);
+      router.push(ROUTES.DRAFT);
+    } catch (err) {
+      setError(getErrorMessage(err));
+      setStatus("error");
     }
-    rafRef.current = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(rafRef.current);
-  }, []);
+  }, [router]);
 
-  // navigate to course when done
   useEffect(() => {
-    if (!done) return;
-    const t = setTimeout(() => router.push(`${ROUTES.COURSE}/demo`), 900);
-    return () => clearTimeout(t);
-  }, [done, router]);
+    if (!profile) {
+      router.replace(ROUTES.CHAT);
+      return;
+    }
 
-  const secondsLeft = Math.max(0, Math.round(((100 - progress) / 100) * TOTAL_MS / 1000));
+    const currentProfile = profile;
+    let cancelled = false;
+
+    async function generateOnMount() {
+      try {
+        const output = await courseService.generate(currentProfile);
+        if (cancelled) return;
+        setDraft(output);
+        router.push(ROUTES.DRAFT);
+      } catch (err) {
+        if (cancelled) return;
+        setError(getErrorMessage(err));
+        setStatus("error");
+      }
+    }
+
+    void generateOnMount();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [profile, router]);
 
   return (
     <div style={{
@@ -189,18 +187,21 @@ export function GenerateView() {
 
       {/* close hint */}
       <div style={{ display: "flex", justifyContent: "flex-end", position: "relative", zIndex: 2 }}>
-        <button style={{
-          padding: "6px 12px", borderRadius: 999,
-          background: "var(--surface)", border: "1px solid var(--border)",
-          color: "var(--text-2)", fontSize: 11, fontWeight: 500,
-          display: "flex", alignItems: "center", gap: 6,
-          letterSpacing: "0.02em", cursor: "pointer",
-          fontFamily: "var(--f-body)",
-        }}>
+        <button
+          onClick={() => router.push(ROUTES.CHAT)}
+          style={{
+            padding: "6px 12px", borderRadius: 999,
+            background: "var(--surface)", border: "1px solid var(--border)",
+            color: "var(--text-2)", fontSize: 11, fontWeight: 500,
+            display: "flex", alignItems: "center", gap: 6,
+            letterSpacing: "0.02em", cursor: "pointer",
+            fontFamily: "var(--f-body)",
+          }}
+        >
           <svg viewBox="0 0 24 24" fill="none" width={11} height={11} aria-hidden>
             <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
           </svg>
-          Close — we&apos;ll ping you
+          Back
         </button>
       </div>
 
@@ -212,56 +213,84 @@ export function GenerateView() {
         <GenerationOrb />
       </div>
 
-      {/* step text + dots */}
+      {/* status text */}
       <div style={{ position: "relative", zIndex: 2, marginBottom: 22, padding: "0 12px" }}>
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={step}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.35, ease: [0.4, 0, 0.2, 1] as [number,number,number,number] }}
-            style={{
-              fontFamily: "var(--f-head)",
-              fontWeight: 500,
-              fontSize: 24,
-              color: "var(--text)",
-              lineHeight: 1.2,
-              marginBottom: 14,
-              letterSpacing: "-0.025em",
-            }}
-          >
-            {done ? "Your course is ready!" : STEPS[step].label}
-          </motion.div>
-        </AnimatePresence>
+        <motion.div
+          key={status}
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35, ease: [0.4, 0, 0.2, 1] as [number,number,number,number] }}
+          style={{
+            fontFamily: "var(--f-head)",
+            fontWeight: 500,
+            fontSize: 24,
+            color: "var(--text)",
+            lineHeight: 1.2,
+            marginBottom: 14,
+            letterSpacing: "-0.025em",
+          }}
+        >
+          {status === "error" ? "Course generation hit a snag" : "Preparing your course…"}
+        </motion.div>
 
-        <StepDots total={STEPS.length} current={done ? STEPS.length - 1 : step} />
-      </div>
-
-      {/* progress bar */}
-      <div style={{ position: "relative", zIndex: 2 }}>
         <div style={{
-          height: 4, borderRadius: 2,
-          background: "var(--border)", overflow: "hidden",
-        }}>
-          <div style={{
-            height: "100%",
-            width: `${progress}%`,
-            background: done
-              ? "var(--gold)"
-              : "var(--text)",
-            borderRadius: 2,
-            transition: "background 0.6s",
-          }} />
-        </div>
-        <div style={{
-          marginTop: 12, fontSize: 11, color: "var(--text-3)",
-          letterSpacing: "0.06em", textTransform: "uppercase",
+          maxWidth: 360,
+          margin: "0 auto",
+          fontSize: 13,
+          color: status === "error" ? "var(--gold-deep)" : "var(--text-3)",
+          lineHeight: 1.5,
           fontFamily: "var(--f-body)",
         }}>
-          {done ? "Opening your course…" : `About ${secondsLeft}s left`}
+          {status === "error" ? error : "This usually takes a moment"}
         </div>
       </div>
+
+      {status === "error" && (
+        <div style={{
+          position: "relative",
+          zIndex: 2,
+          display: "flex",
+          gap: 10,
+        }}>
+          <button
+            onClick={() => profile && void runGeneration(profile)}
+            disabled={!profile}
+            style={{
+              flex: 1,
+              height: 52,
+              borderRadius: 26,
+              border: "none",
+              background: "linear-gradient(180deg,#1F1B14 0%,#0B0907 100%)",
+              color: "#FAF7F0",
+              fontFamily: "var(--f-body)",
+              fontWeight: 600,
+              fontSize: 15,
+              cursor: profile ? "pointer" : "not-allowed",
+              opacity: profile ? 1 : 0.48,
+              boxShadow: "0 8px 24px rgba(20,17,13,.18)",
+            }}
+          >
+            Retry
+          </button>
+          <button
+            onClick={() => router.push(ROUTES.CHAT)}
+            style={{
+              flex: 1,
+              height: 52,
+              borderRadius: 26,
+              border: "1px solid var(--border-strong)",
+              background: "transparent",
+              color: "var(--text)",
+              fontFamily: "var(--f-body)",
+              fontWeight: 500,
+              fontSize: 15,
+              cursor: "pointer",
+            }}
+          >
+            Back
+          </button>
+        </div>
+      )}
     </div>
   );
 }
