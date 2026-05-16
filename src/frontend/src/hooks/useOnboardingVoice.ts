@@ -58,6 +58,7 @@ export function useOnboardingVoice(): OnboardingVoiceState {
   const playCtxRef = useRef<AudioContext | null>(null);
   const playRateRef = useRef<number>(DEFAULT_PLAY_RATE);
   const nextStartRef = useRef<number>(0);
+  const activeSourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
   // `status` is read inside event callbacks attached once at connect time — keep a ref so
   // they see the current value without re-binding the WebSocket handlers.
   const statusRef = useRef<OnboardingStatus>("idle");
@@ -102,6 +103,7 @@ export function useOnboardingVoice(): OnboardingVoiceState {
       }
     }
     nextStartRef.current = 0;
+    activeSourcesRef.current.clear();
     setAmplitude(0);
   }, []);
 
@@ -132,9 +134,25 @@ export function useOnboardingVoice(): OnboardingVoiceState {
       const startAt = Math.max(ctx.currentTime, nextStartRef.current);
       src.start(startAt);
       nextStartRef.current = startAt + audioBuf.duration;
+      activeSourcesRef.current.add(src);
+      src.onended = () => activeSourcesRef.current.delete(src);
     },
     [ensurePlayCtx]
   );
+
+  const flushPlayback = useCallback(() => {
+    for (const src of activeSourcesRef.current) {
+      try {
+        src.stop();
+      } catch {
+        /* already stopped */
+      }
+    }
+    activeSourcesRef.current.clear();
+    if (playCtxRef.current) {
+      nextStartRef.current = playCtxRef.current.currentTime;
+    }
+  }, []);
 
   const startMic = useCallback(
     async (ws: WebSocket) => {
@@ -279,6 +297,10 @@ export function useOnboardingVoice(): OnboardingVoiceState {
           case "speech_end":
             if (statusRef.current === "speaking") setStatus("listening");
             break;
+          case "speech_interrupted":
+            flushPlayback();
+            if (statusRef.current === "speaking") setStatus("listening");
+            break;
           case "done":
             setProfile(msg.profile ?? null);
             setStatus("done");
@@ -292,7 +314,7 @@ export function useOnboardingVoice(): OnboardingVoiceState {
         playPcm(evt.data);
       }
     };
-  }, [cleanup, playPcm, startMic]);
+  }, [cleanup, flushPlayback, playPcm, startMic]);
 
   const stop = useCallback(() => {
     const ws = wsRef.current;

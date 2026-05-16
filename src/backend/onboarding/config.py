@@ -12,11 +12,11 @@ class Settings:
     openai_api_key: str
     stt_model: str = "default"
     tts_model: str = "default"
-    tts_voice_id: str = "LFZvm12tW_z0xfGo"
+    tts_voice_id: str = "bvNlBZ3DWDoVy_Yc"
     sample_rate: int = 24000
     frame_samples: int = 1920
-    inactivity_threshold: float = 0.75
-    inactivity_sustained_steps: int = 10
+    inactivity_threshold: float = 0.7
+    inactivity_sustained_steps: int = 6
     max_user_turns: int = 15
 
 

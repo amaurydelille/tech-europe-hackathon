@@ -1,7 +1,10 @@
+import logging
 from dataclasses import dataclass
 from typing import AsyncIterator
 
 from gradium.client import GradiumClient
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -25,9 +28,12 @@ SttEvent = PartialTranscript | TurnEnd | End
 class SttSession:
     """Wraps gradium's streaming STT with VAD-based turn detection.
 
-    On each VAD `step` message we check the 2-second-horizon inactivity probability.
-    When it crosses `inactivity_threshold` we emit a `TurnEnd` carrying the text
-    accumulated since the previous turn end.
+    On each VAD `step` we check the 2-second-horizon inactivity probability.
+    When it crosses `inactivity_threshold` for `sustained_steps` consecutive
+    steps we issue `send_flush(...)` and wait for the matching `flushed`
+    confirmation before emitting `TurnEnd` — this ensures any text the server
+    still has buffered (within `delay_in_frames`) lands in the turn we yield,
+    instead of leaking into the next one.
     """
 
     def __init__(
@@ -46,6 +52,8 @@ class SttSession:
         self._buffer: list[str] = []
         self._in_turn: bool = False
         self._above_streak: int = 0
+        self._pending_flush_id: int | None = None
+        self._flush_counter: int = 0
 
     async def __aenter__(self) -> "SttSession":
         self._stt = self._client.stt_realtime(
@@ -75,15 +83,21 @@ class SttSession:
             raise RuntimeError("SttSession not started")
         async for msg in self._stt:
             kind = msg.get("type")
+
             if kind == "text":
                 text = msg.get("text", "")
                 if not text:
                     continue
                 self._buffer.append(text)
                 self._in_turn = True
+                # New speech invalidates the inactivity streak.
                 self._above_streak = 0
                 yield PartialTranscript(text=text)
+
             elif kind == "step":
+                # Don't re-trigger a flush while one is already in flight.
+                if self._pending_flush_id is not None:
+                    continue
                 vad = msg.get("vad") or []
                 if len(vad) < 3:
                     continue
@@ -97,15 +111,36 @@ class SttSession:
                     and self._above_streak >= self._sustained_steps
                     and self._buffer
                 ):
-                    turn_text = " ".join(self._buffer).strip()
-                    self._buffer.clear()
-                    self._in_turn = False
-                    self._above_streak = 0
-                    if turn_text:
-                        yield TurnEnd(text=turn_text)
+                    self._flush_counter += 1
+                    self._pending_flush_id = self._flush_counter
+                    try:
+                        await self._stt.send_flush(flush_id=self._pending_flush_id)
+                    except Exception:
+                        # Couldn't flush — fall back to yielding what we have
+                        # so we don't deadlock waiting for `flushed`.
+                        log.exception("STT send_flush failed; yielding turn without flush")
+                        self._pending_flush_id = None
+                        turn_text = "".join(self._buffer).strip()
+                        self._buffer.clear()
+                        self._in_turn = False
+                        self._above_streak = 0
+                        if turn_text:
+                            yield TurnEnd(text=turn_text)
+
+            elif kind == "flushed":
+                if msg.get("flush_id") != self._pending_flush_id:
+                    continue
+                turn_text = "".join(self._buffer).strip()
+                self._buffer.clear()
+                self._in_turn = False
+                self._above_streak = 0
+                self._pending_flush_id = None
+                if turn_text:
+                    yield TurnEnd(text=turn_text)
+
             elif kind == "end_of_stream":
                 if self._buffer:
-                    turn_text = " ".join(self._buffer).strip()
+                    turn_text = "".join(self._buffer).strip()
                     self._buffer.clear()
                     if turn_text:
                         yield TurnEnd(text=turn_text)

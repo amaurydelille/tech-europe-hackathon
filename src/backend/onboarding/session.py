@@ -39,6 +39,7 @@ class OnboardingSession:
         self._history: list[Any] = []
         self._out: asyncio.Queue[Event | None] = asyncio.Queue()
         self._stt_task: asyncio.Task | None = None
+        self._speak_task: asyncio.Task | None = None
         self._user_turns: int = 0
         self._done: bool = False
 
@@ -51,7 +52,7 @@ class OnboardingSession:
         )
         await self._stt.__aenter__()
         self._stt_task = asyncio.create_task(self._consume_stt())
-        await self._say(OPENING_LINE, record=True)
+        self._start_speak(OPENING_LINE, record=True)
 
     async def push_audio(self, audio: bytes) -> None:
         if self._stt is None or self._done:
@@ -60,6 +61,7 @@ class OnboardingSession:
 
     async def aclose(self) -> None:
         self._done = True
+        await self._cancel_speech()
         if self._stt_task is not None:
             self._stt_task.cancel()
             try:
@@ -86,6 +88,9 @@ class OnboardingSession:
         try:
             async for stt_event in self._stt.events():
                 if isinstance(stt_event, PartialTranscript):
+                    # Barge-in: user is speaking, cut off any in-flight TTS so
+                    # they don't have to talk over the agent.
+                    await self._cancel_speech()
                     await self._out.put(
                         Event("partial_transcript", {"text": stt_event.text})
                     )
@@ -103,15 +108,21 @@ class OnboardingSession:
             await self._out.put(None)
 
     async def _handle_user_turn(self, text: str) -> None:
+        # User finished a turn — make sure any prior speech is fully stopped
+        # before we respond. (PartialTranscript usually cancels first, but
+        # turn-end without partials is possible.)
+        await self._cancel_speech()
+
         self._user_turns += 1
         await self._out.put(Event("user_turn", {"text": text}))
         self._history.append({"role": "user", "content": text})
 
         if self._user_turns >= self._settings.max_user_turns and self._context.profile is None:
-            await self._say(
+            self._start_speak(
                 "Thanks — I have enough to get started. I'll set things up now.",
                 record=False,
             )
+            await self._wait_for_speech()
             await self._finish(profile=None)
             return
 
@@ -132,16 +143,41 @@ class OnboardingSession:
         assistant_text = (result.final_output or "").strip()
 
         if assistant_text:
-            await self._say(assistant_text, record=False)
+            self._start_speak(assistant_text, record=False)
 
         if self._context.profile is not None:
+            await self._wait_for_speech()
             await self._finish(profile=self._context.profile)
+
+    def _start_speak(self, text: str, *, record: bool) -> None:
+        """Kick off TTS as a background task so the STT loop can interrupt it."""
+        self._speak_task = asyncio.create_task(self._say(text, record=record))
+
+    async def _wait_for_speech(self) -> None:
+        task = self._speak_task
+        if task is None:
+            return
+        try:
+            await task
+        except (asyncio.CancelledError, Exception):
+            pass
+
+    async def _cancel_speech(self) -> None:
+        task = self._speak_task
+        if task is None or task.done():
+            return
+        task.cancel()
+        try:
+            await task
+        except (asyncio.CancelledError, Exception):
+            pass
 
     async def _say(self, text: str, *, record: bool) -> None:
         if record:
             self._history.append({"role": "assistant", "content": text})
         await self._out.put(Event("assistant_text", {"text": text}))
         await self._out.put(Event("speech_start"))
+        interrupted = False
         try:
             async for evt in speak(
                 self._client,
@@ -156,10 +192,17 @@ class OnboardingSession:
                     )
                 elif evt["type"] == "audio":
                     await self._out.put(Event("audio", evt["audio"]))
+        except asyncio.CancelledError:
+            interrupted = True
+            raise
         except Exception as e:
             log.exception("TTS failed")
-            await self._out.put(Event("error", {"message": f"tts: {e}"}))
-        await self._out.put(Event("speech_end"))
+            # put_nowait so we don't risk awaiting during teardown
+            self._out.put_nowait(Event("error", {"message": f"tts: {e}"}))
+        finally:
+            self._out.put_nowait(
+                Event("speech_interrupted" if interrupted else "speech_end")
+            )
 
     async def _finish(self, *, profile: UserProfile | None) -> None:
         payload = {"profile": profile.model_dump() if profile else None}

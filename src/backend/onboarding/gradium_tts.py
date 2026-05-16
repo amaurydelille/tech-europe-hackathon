@@ -8,7 +8,7 @@ async def speak(
     text: str,
     *,
     model_name: str = "default",
-    voice_id: str = "LFZvm12tW_z0xfGo",
+    voice_id: str = "bvNlBZ3DWDoVy_Yc",
     output_format: str = "pcm",
 ) -> AsyncIterator[dict[str, Any]]:
     """Synthesize `text` and yield TTS events.
