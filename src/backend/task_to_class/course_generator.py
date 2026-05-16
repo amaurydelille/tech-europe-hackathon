@@ -115,8 +115,8 @@ Wrap the entire output between these exact markers:
 ### NEXT CHAPTER
 Based on the current course, suggest the single most logical next course the student should take.
 - It must be a natural continuation — the next step in the learning journey
-- Return ONLY the course title, nothing else (no explanation, no punctuation at the end)
-- Examples: if the current course is "The life of Napoleon", a good next chapter would be "The Fall of Napoleon and the Congress of Vienna"
+- Return ONLY the course title, 5 words maximum, no explanation, no punctuation at the end
+- Examples: "Napoleon's Fall and Exile", "The French Revolution Origins", "Waterloo and the Aftermath"
 
 Wrap it between these exact markers:
 `===NEXT_CHAPTER_START===`
