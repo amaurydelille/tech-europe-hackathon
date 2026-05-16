@@ -81,7 +81,7 @@ Read the JSON output to learn the true `duration` and use it when placing the sp
 
 **Default to animated stills, not Seedance video.** Seedance generation takes 1–3 minutes per clip; `animate_image` (a slow zoom on a still) takes ~1 second of ffmpeg time. Reserve real Seedance video for shots where you genuinely need motion the still cannot fake (water flowing, marching armies, gestures). For everything else — establishing shots, portraits, maps, atmospheric scenes — generate a still and animate it.
 
-**Time budget for Seedance.** The total wall-time of your `gen_video` clips should be **~{{SEEDANCE_PERCENT}}% of the target video duration** (about **{{SEEDANCE_SECONDS}} seconds** of Seedance footage in this run). Spend that budget on the 1–3 shots where motion most carries the narrative; cover everything else with `animate_image`. Going over the budget is fine only if a shot genuinely cannot be staged any other way.
+**Time budget for Seedance.** The total wall-time of your `gen_video` clips should be **~{{SEEDANCE_PERCENT}}% of the target video duration** (about **{{SEEDANCE_SECONDS}} seconds** of Seedance footage in this run). Spend that budget on the shots where motion most carries the narrative; cover everything else with `animate_image`. Going over the budget is fine only if a shot genuinely cannot be staged any other way.
 
 **Keep individual clips short.** 5 seconds is enough for almost every beat — if you want a longer shot, prefer **two 5-second clips with different framings** (wide → close-up, or alternate angles) rather than one 10-second take. This is faster to generate and reads better cinematically.
 
