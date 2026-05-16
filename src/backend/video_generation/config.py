@@ -26,6 +26,7 @@ class Config(BaseModel):
     resolution: str
     aspect: str
     target_duration_seconds: int
+    seedance_time_share: float
     models: Models
 
 
