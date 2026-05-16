@@ -105,6 +105,7 @@ function VideoBlock({ courseId, isPlaying, progress, onTogglePlay, onSeek }: Vid
   useEffect(() => {
     const v = videoRef.current;
     if (!v) return;
+    v.muted = true; // Required by most browsers for reliable autoplay
     if (isPlaying) v.play().catch(() => {});
     else v.pause();
   }, [isPlaying]);
@@ -153,8 +154,15 @@ function VideoBlock({ courseId, isPlaying, progress, onTogglePlay, onSeek }: Vid
         ref={videoRef}
         src={`/api/course/${encodeURIComponent(courseId)}/video`}
         autoPlay
+        muted
         onTimeUpdate={handleTimeUpdate}
         onEnded={() => onSeek(1)}
+        onLoadedMetadata={() => {
+          const v = videoRef.current;
+          if (!v) return;
+          v.muted = true;
+          v.play().catch(() => {});
+        }}
         playsInline
         preload="metadata"
         style={{
@@ -175,26 +183,35 @@ function VideoBlock({ courseId, isPlaying, progress, onTogglePlay, onSeek }: Vid
           left: "50%",
           top: "50%",
           transform: "translate(-50%,-50%)",
-          width: 64,
-          height: 64,
+          width: 72,
+          height: 72,
           borderRadius: "50%",
-          background: "rgba(255,255,255,0.88)",
-          backdropFilter: "blur(8px)",
-          border: "none",
+          background: "rgba(255,255,255,0.08)",
+          backdropFilter: "blur(12px)",
+          WebkitBackdropFilter: "blur(12px)",
+          border: "1px solid rgba(255,255,255,0.35)",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          color: "#2a2520",
-          boxShadow: "0 8px 24px rgba(0,0,0,0.30)",
+          color: "#ffffff",
+          boxShadow: "0 10px 28px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.25)",
           cursor: "pointer",
           WebkitTapHighlightColor: "transparent",
           opacity: isPlaying ? 0 : 1,
+          pointerEvents: isPlaying ? "none" : "auto",
           transition: "opacity 0.2s",
         }}
       >
-        <svg viewBox="0 0 24 24" fill="currentColor" width={26} height={26} aria-hidden>
-          <path d="M7 5v14l12-7z" />
-        </svg>
+        {isPlaying ? (
+          <svg viewBox="0 0 24 24" fill="currentColor" width={24} height={24} aria-hidden>
+            <rect x="6.2" y="5.2" width="4.4" height="13.6" rx="1.2" />
+            <rect x="13.4" y="5.2" width="4.4" height="13.6" rx="1.2" />
+          </svg>
+        ) : (
+          <svg viewBox="0 0 24 24" fill="currentColor" width={26} height={26} aria-hidden>
+            <path d="M8 5.4c0-.8.9-1.3 1.6-.9l10.2 6.1c.7.4.7 1.4 0 1.8L9.6 18.5c-.7.4-1.6-.1-1.6-.9V5.4z" />
+          </svg>
+        )}
       </button>
 
       {/* tap anywhere to toggle (invisible full overlay) */}
@@ -1201,7 +1218,7 @@ function SourcesSection({
 }
 
 // ── Article content (dynamic) ─────────────────────────────────────────
-function ArticleContent({ course }: { course: ParsedCourse }) {
+function ArticleContent({ course, onCreateCourse }: { course: ParsedCourse; onCreateCourse: () => void }) {
   const { title, chapters, sources, totalReadMin } = course;
   const [highlightedSource, setHighlightedSource] = useState<number | null>(null);
   const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1357,6 +1374,7 @@ function ArticleContent({ course }: { course: ParsedCourse }) {
           {title}
         </h3>
         <button
+          onClick={onCreateCourse}
           style={{
             width: "100%",
             height: 52,
@@ -1798,17 +1816,59 @@ export function CourseViewA({ course, courseId }: { course: ParsedCourse; course
           zIndex: 30,
           padding: "10px 14px",
           display: "flex",
-          alignItems: "center",
-          gap: 10,
-          pointerEvents: "none",
+          justifyContent: "center",
+          pointerEvents: "auto",
         }}
       >
-        <PillBtn ariaLabel="Back" onClick={() => router.push("/chat")}>
-          <svg viewBox="0 0 24 24" fill="none" width={20} height={20} aria-hidden>
-            <path d="M14 6l-6 6 6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </PillBtn>
-        <div style={{ flex: 1 }} />
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            background: "rgba(255,255,255,0.88)",
+            borderRadius: 999,
+            padding: 4,
+            backdropFilter: "blur(12px)",
+            WebkitBackdropFilter: "blur(12px)",
+            border: "1px solid rgba(255,255,255,0.65)",
+            boxShadow: "0 8px 24px rgba(0,0,0,0.16)",
+          }}
+        >
+          <button
+            onClick={() => router.push("/chat")}
+            style={{
+              height: 30,
+              padding: "0 12px",
+              borderRadius: 999,
+              border: "none",
+              background: "transparent",
+              color: "#2a2520",
+              fontSize: 12,
+              fontWeight: 600,
+              fontFamily: "var(--f-body)",
+              cursor: "pointer",
+            }}
+          >
+            Chat
+          </button>
+          <button
+            onClick={() => router.push(`/course/${courseId}`)}
+            style={{
+              height: 30,
+              padding: "0 12px",
+              borderRadius: 999,
+              border: "none",
+              background: "#2a2520",
+              color: "#fff",
+              fontSize: 12,
+              fontWeight: 600,
+              fontFamily: "var(--f-body)",
+              cursor: "pointer",
+            }}
+          >
+            Feed
+          </button>
+        </div>
       </div>
 
       {/* ── Horizontal view track */}
@@ -1885,7 +1945,7 @@ export function CourseViewA({ course, courseId }: { course: ParsedCourse; course
             WebkitOverflowScrolling: "touch" as React.CSSProperties["WebkitOverflowScrolling"],
           }}
         >
-          <ArticleContent course={course} />
+          <ArticleContent course={course} onCreateCourse={() => router.push("/chat")} />
         </div>
       </div>
 
