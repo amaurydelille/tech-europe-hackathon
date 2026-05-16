@@ -78,6 +78,7 @@ def test_gen_video_uploads_ref_and_subscribes(tmp_path: Path, fake_video: Path) 
     assert args["image_url"] == "https://fake.fal/ref.png"
     assert args["duration"] == "5"
     assert args["resolution"] == "480p"
+    assert args["generate_audio"] is False
 
     assert result["path"] == str(out)
     assert result["duration"] == pytest.approx(3.0, abs=0.5)

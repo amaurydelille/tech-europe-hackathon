@@ -74,6 +74,7 @@ def gen_video(
         "duration": str(duration),
         "resolution": resolution,
         "aspect_ratio": aspect,
+        "generate_audio": False,
     }
     if seed is not None:
         arguments["seed"] = seed
