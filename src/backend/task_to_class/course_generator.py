@@ -108,13 +108,12 @@ Strict structure — follow this schema exactly, replacing placeholders with rea
 ```
 
 Additional content rules:
+- This condensed course will be read aloud as a 40-second video narration — the ENTIRE text must fit within ~500 words. Count carefully. Do not exceed it.
+- Go straight to the point. Every word must earn its place. No intro phrases, no "in this section we will", no paraphrasing, no filler.
+- Do NOT paraphrase content from the full course — distill facts directly.
 - Choose section titles freely — whatever best fits the content, no imposed labels
-- Every `##` section must be immediately followed by a `### Key Insight` with one sharp sentence
+- Every `##` section must be immediately followed by a `### Key Insight` with one sharp sentence (not counted in the 500-word budget — Key Insights are display-only, not narrated)
 - If the subject is scientific (mathematics, physics, AI, machine learning, chemistry, engineering, etc.), use LaTeX notation enclosed in `$$...$$` for formulas where it genuinely helps. Do NOT use LaTeX for non-scientific topics.
-- The Key Insight distills the single most important fact, date, or idea from the section above it
-- Each section must have 2-4 sentences of real substance before the Key Insight
-- Include causes, consequences, and nuance — not just surface facts
-- Aim for at least 400 words total (excluding Key Insights)
 
 Wrap the entire output between these exact markers:
 `===CONDENSED_COURSE_START===`
