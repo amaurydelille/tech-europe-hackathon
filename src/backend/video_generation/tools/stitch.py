@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 from ..config import config
+from .subtitles import Cue, build_cues, render_cue_png
 from .validate_script import (
     ImageEntry,
     Script,
@@ -57,6 +58,21 @@ def _build_image_segment_filter(idx: int, target_w: int, target_h: int, dur: flo
     )
 
 
+def _render_subtitles(
+    cues: list[Cue],
+    out_dir: Path,
+    video_w: int,
+    video_h: int,
+) -> list[tuple[Cue, Path, int, int]]:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    rendered: list[tuple[Cue, Path, int, int]] = []
+    for i, cue in enumerate(cues):
+        png_path = out_dir / f"cue_{i:03d}.png"
+        w, h = render_cue_png(cue, png_path, video_w, video_h)
+        rendered.append((cue, png_path, w, h))
+    return rendered
+
+
 def stitch(script_path: Path, out_path: Path) -> dict:
     script_path = Path(script_path)
     script: Script = validate_script(script_path)
@@ -88,9 +104,30 @@ def stitch(script_path: Path, out_path: Path) -> dict:
             filter_parts.append(_build_image_segment_filter(i, width, height, dur))
 
     concat_inputs = "".join(f"[v{i}]" for i in range(len(visuals)))
-    filter_parts.append(f"{concat_inputs}concat=n={len(visuals)}:v=1:a=0[vout]")
+    filter_parts.append(f"{concat_inputs}concat=n={len(visuals)}:v=1:a=0[vconcat]")
 
-    speech_offset = len(visuals)
+    cues = build_cues(speeches)
+    rendered = _render_subtitles(cues, script_dir / "subtitles", width, height)
+
+    subtitle_offset = len(visuals)
+    total = script.total_duration
+    for j, (cue, png_path, png_w, png_h) in enumerate(rendered):
+        in_idx = subtitle_offset + j
+        inputs += ["-loop", "1", "-t", str(total), "-i", str(png_path)]
+        prev_label = "vconcat" if j == 0 else f"vsub{j - 1}"
+        next_label = "vout" if j == len(rendered) - 1 else f"vsub{j}"
+        margin_v = max(40, int(height * 0.12))
+        x_expr = f"(main_w-overlay_w)/2"
+        y_expr = f"main_h-overlay_h-{margin_v}"
+        filter_parts.append(
+            f"[{prev_label}][{in_idx}:v]overlay={x_expr}:{y_expr}:"
+            f"enable='between(t,{cue.start:.3f},{cue.end:.3f})'[{next_label}]"
+        )
+
+    if not rendered:
+        filter_parts.append("[vconcat]null[vout]")
+
+    speech_offset = len(visuals) + len(rendered)
     audio_labels: list[str] = []
     for j, s in enumerate(speeches):
         audio_path = _resolve_path(script_dir, s.audio_path)
@@ -102,7 +139,6 @@ def stitch(script_path: Path, out_path: Path) -> dict:
         )
         audio_labels.append(f"[a{j}]")
 
-    total = script.total_duration
     if audio_labels:
         mix = "".join(audio_labels)
         filter_parts.append(
@@ -133,6 +169,7 @@ def stitch(script_path: Path, out_path: Path) -> dict:
     return {
         "path": str(out_path),
         "duration": probe_duration(out_path),
+        "subtitle_cues": len(rendered),
     }
 
 

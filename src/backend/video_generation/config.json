@@ -2,8 +2,9 @@
   "voice_id": "YTpq7expH9539ERJ",
   "resolution": "480p",
   "aspect": "9:16",
-  "target_duration_seconds": 20,
-  "seedance_time_share": 0.2,
+  "target_duration_seconds": 30,
+  "real_video_time_share": 0.2,
+  "tts_padding_bonus": -0.1,
   "models": {
     "seedance": "bytedance/seedance-2.0/image-to-video",
     "seedream_text_to_image": "fal-ai/bytedance/seedream/v4/text-to-image",

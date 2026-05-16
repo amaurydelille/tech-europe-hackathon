@@ -26,7 +26,10 @@ class Config(BaseModel):
     resolution: str
     aspect: str
     target_duration_seconds: int
-    seedance_time_share: float
+    real_video_time_share: float
+    # Gradium padding_bonus: negative => faster speech, positive => slower.
+    # Range -4.0..4.0, default 0.0. Negative ~ -1.0 gives a modest speed-up.
+    tts_padding_bonus: float
     models: Models
 
 

@@ -65,6 +65,7 @@ def test_stitch_video_with_speech_overlay(tmp_path: Path) -> None:
                 "duration": 3.0,
                 "text": "hello",
                 "audio_path": str(audio),
+                "timestamps": [{"text": "hello", "start": 0.0, "end": 2.5}],
             },
             {
                 "kind": "video",
@@ -93,6 +94,66 @@ def test_stitch_video_with_speech_overlay(tmp_path: Path) -> None:
 
     assert out.is_file()
     assert result["path"] == str(out)
+    assert result["subtitle_cues"] == 1
+    assert probe_duration(out) == pytest.approx(8.0, abs=0.5)
+
+
+def test_stitch_burns_subtitles_from_timestamps(tmp_path: Path) -> None:
+    audio = tmp_path / "s000.wav"
+    _make_wav(audio, duration_s=3.0)
+    vid = tmp_path / "v000.mp4"
+    _make_video(vid, duration_s=5.0, color="red")
+    img = tmp_path / "i000.png"
+    _make_image(img, color="green")
+
+    script = {
+        "total_duration": 8.0,
+        "resolution": "480p",
+        "aspect": "9:16",
+        "entries": [
+            {
+                "kind": "speech",
+                "start": 1.0,
+                "duration": 3.0,
+                "text": "Hello brave new world",
+                "audio_path": str(audio),
+                "timestamps": [
+                    {"text": "Hello", "start": 0.0, "end": 0.6},
+                    {"text": "brave", "start": 0.7, "end": 1.2},
+                    {"text": "new", "start": 1.3, "end": 1.7},
+                    {"text": "world", "start": 1.8, "end": 2.5},
+                ],
+            },
+            {
+                "kind": "video",
+                "start": 0.0,
+                "end": 5.0,
+                "duration": 5.0,
+                "prompt": "red scene",
+                "anchors": [],
+                "video_path": str(vid),
+            },
+            {
+                "kind": "image",
+                "start": 5.0,
+                "end": 8.0,
+                "prompt": "green frame",
+                "anchors": [],
+                "image_path": str(img),
+            },
+        ],
+    }
+    script_path = tmp_path / "script.json"
+    script_path.write_text(json.dumps(script))
+
+    out = tmp_path / "final.mp4"
+    result = stitch.stitch(script_path=script_path, out_path=out)
+
+    assert out.is_file()
+    assert result["subtitle_cues"] >= 1
+    cue_dir = tmp_path / "subtitles"
+    assert cue_dir.is_dir()
+    assert any(cue_dir.glob("cue_*.png"))
     assert probe_duration(out) == pytest.approx(8.0, abs=0.5)
 
 

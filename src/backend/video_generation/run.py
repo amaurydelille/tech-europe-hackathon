@@ -18,14 +18,14 @@ DEFAULT_CODEX_MODEL: str | None = None  # let codex use its config default
 def _render_instructions(target_duration_seconds: int) -> str:
     template = INSTRUCTIONS_PATH.read_text()
     inspection_guide = INSPECTION_GUIDE_PATH.read_text().rstrip()
-    seedance_percent = int(round(config.seedance_time_share * 100))
-    seedance_seconds = max(0, int(round(config.seedance_time_share * target_duration_seconds)))
+    real_video_percent = int(round(config.real_video_time_share * 100))
+    real_video_seconds = max(0, int(round(config.real_video_time_share * target_duration_seconds)))
     return (
         template
         .replace("{{TARGET_DURATION_SECONDS}}", str(target_duration_seconds))
         .replace("{{INSPECTION_GUIDE}}", inspection_guide)
-        .replace("{{SEEDANCE_PERCENT}}", str(seedance_percent))
-        .replace("{{SEEDANCE_SECONDS}}", str(seedance_seconds))
+        .replace("{{REAL_VIDEO_PERCENT}}", str(real_video_percent))
+        .replace("{{REAL_VIDEO_SECONDS}}", str(real_video_seconds))
     )
 
 

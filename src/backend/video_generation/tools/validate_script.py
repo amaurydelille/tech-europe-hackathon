@@ -13,12 +13,19 @@ class ValidationError(Exception):
     pass
 
 
+class WordTimestamp(BaseModel):
+    text: str
+    start: float  # seconds relative to the speech audio start
+    end: float  # seconds relative to the speech audio start
+
+
 class SpeechEntry(BaseModel):
     kind: Literal["speech"]
     start: float
     duration: float
     text: str
     audio_path: str
+    timestamps: list[WordTimestamp]
 
 
 class VideoEntry(BaseModel):
@@ -84,6 +91,22 @@ def validate_script(source: Script | dict | str | Path) -> Script:
             raise ValidationError(
                 f"speech extends past total_duration: '{s.text}'"
             )
+        if not s.timestamps:
+            raise ValidationError(
+                f"speech entry has no timestamps: '{s.text}'. "
+                f"Copy the `timestamps` array from gen_tts output into this entry."
+            )
+        for ts in s.timestamps:
+            if ts.end < ts.start - DURATION_TOLERANCE:
+                raise ValidationError(
+                    f"timestamp end before start in speech '{s.text}': "
+                    f"{ts.text!r} {ts.start}->{ts.end}"
+                )
+            if ts.start < -DURATION_TOLERANCE or ts.end > s.duration + DURATION_TOLERANCE:
+                raise ValidationError(
+                    f"timestamp out of bounds in speech '{s.text}': "
+                    f"{ts.text!r} {ts.start}->{ts.end} (duration {s.duration})"
+                )
 
     visuals = sorted(
         (e for e in script.entries if not isinstance(e, SpeechEntry)),

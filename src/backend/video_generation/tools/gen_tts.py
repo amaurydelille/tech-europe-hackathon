@@ -5,12 +5,21 @@ import asyncio
 import importlib
 import json
 import os
+import random
 import sys
 from pathlib import Path
 from typing import Callable
 
 from ..config import config, gradium_api_key
 from ..ffmpeg_utils import probe_duration
+
+# Gradium caps the account at 3 concurrent WebSocket sessions and rejects extras
+# with this exact substring. Multiple gen_tts calls in parallel hit this often
+# enough that retrying inside the tool is much simpler than asking every caller
+# to throttle themselves.
+_CONCURRENCY_ERROR_MARKER = "Concurrency limit exceeded"
+_CONCURRENCY_MAX_ATTEMPTS = 2
+_CONCURRENCY_BASE_DELAY_S = 1.5
 
 
 def _default_client_factory():
@@ -35,9 +44,59 @@ async def _synthesize(text: str, voice_id: str, client):
             "model_name": "default",
             "voice_id": voice_id,
             "output_format": "wav",
+            "json_config": {"padding_bonus": config.tts_padding_bonus},
         },
         text=text,
     )
+
+
+async def _synthesize_with_retry(text: str, voice_id: str, client):
+    """Call Gradium TTS, retrying only on the 3-session concurrency cap.
+
+    Other errors propagate immediately — we don't want to mask a bad voice id
+    or an empty payload.
+    """
+    last_exc: Exception | None = None
+    for attempt in range(_CONCURRENCY_MAX_ATTEMPTS):
+        try:
+            return await _synthesize(text, voice_id, client)
+        except Exception as e:
+            if _CONCURRENCY_ERROR_MARKER not in str(e):
+                raise
+            last_exc = e
+            if attempt == _CONCURRENCY_MAX_ATTEMPTS - 1:
+                break
+            delay = _CONCURRENCY_BASE_DELAY_S * (2 ** attempt) + random.uniform(0, 0.5)
+            await asyncio.sleep(delay)
+    raise RuntimeError(
+        f"Gradium TTS still over the concurrency cap after "
+        f"{_CONCURRENCY_MAX_ATTEMPTS} attempts: {last_exc}"
+    )
+
+
+def _extract_timestamps(result) -> list[dict]:
+    """Pull `text_with_timestamps` off a Gradium TTSResult into plain dicts.
+
+    Each entry has the segment's local start/end (relative to the speech audio).
+    Raises if the SDK did not return any segments — the downstream stitcher
+    requires per-word timestamps to render subtitles, so we fail loudly here
+    instead of producing a silent video.
+    """
+    raw = getattr(result, "text_with_timestamps", None) or []
+    out: list[dict] = []
+    for seg in raw:
+        text = getattr(seg, "text", None)
+        start = getattr(seg, "start_s", None)
+        stop = getattr(seg, "stop_s", None)
+        if text is None or start is None or stop is None:
+            continue
+        out.append({"text": text, "start": float(start), "end": float(stop)})
+    if not out:
+        raise RuntimeError(
+            "Gradium TTS returned no text_with_timestamps segments; "
+            "cannot build subtitles for this line."
+        )
+    return out
 
 
 def gen_tts(
@@ -54,13 +113,14 @@ def gen_tts(
     voice_id = voice_id or config.voice_id
     factory = client_factory or _default_client_factory
     client = factory()
-    result = asyncio.run(_synthesize(text, voice_id, client))
+    result = asyncio.run(_synthesize_with_retry(text, voice_id, client))
     out.write_bytes(result.raw_data)
     duration = probe_duration(out)
     return {
         "path": str(out),
         "duration": duration,
         "sample_rate": result.sample_rate or 48000,
+        "timestamps": _extract_timestamps(result),
     }
 
 
