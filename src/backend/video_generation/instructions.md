@@ -52,7 +52,7 @@ For each anchor, call:
 ```
 uv run python -m backend.video_generation.tools.gen_image \
     --prompt "<full visual description: subject, lighting, setting, style, era, framing>" \
-    --aspect 16:9 \
+    --aspect 9:16 \
     --out assets/refs/<anchor_id>.png
 ```
 
@@ -86,7 +86,7 @@ uv run python -m backend.video_generation.tools.gen_video \
     --image assets/refs/<anchor_id>.png \
     --duration 5 \
     --resolution 480p \
-    --aspect 16:9 \
+    --aspect 9:16 \
     --out assets/video/vNNN.mp4
 ```
 
@@ -98,7 +98,7 @@ For each still shot that depicts an anchor:
 uv run python -m backend.video_generation.tools.gen_image \
     --prompt "<detailed prompt>" \
     --ref assets/refs/<anchor_id>.png \
-    --aspect 16:9 \
+    --aspect 9:16 \
     --out assets/image/iNNN.png
 ```
 
@@ -114,7 +114,7 @@ Build the final script with this exact shape:
 {
   "total_duration": <float seconds>,
   "resolution": "480p",
-  "aspect": "16:9",
+  "aspect": "9:16",
   "entries": [
     {
       "kind": "speech",
@@ -198,7 +198,7 @@ Adapt this to the lesson's tone (e.g. for a scientific lesson: "Crisp infographi
 - Same visual style clause in every generation prompt.
 - Recurring characters/settings always use the same anchor image.
 - Narration flows as one continuous piece — avoid abrupt topic jumps; transitions are explicit ("Meanwhile, …", "Earlier that night, …").
-- Avoid mixing aspect ratios. Pick one for the whole run (default 16:9).
+- Use **9:16 vertical (Instagram / TikTok format)** for the whole run unless the user specifies otherwise. Frame every visual prompt accordingly: portrait composition, subject centered vertically, leave headroom and footroom for captions.
 
 ## When something goes wrong
 

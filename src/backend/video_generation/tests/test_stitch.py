@@ -96,6 +96,38 @@ def test_stitch_video_with_speech_overlay(tmp_path: Path) -> None:
     assert probe_duration(out) == pytest.approx(8.0, abs=0.5)
 
 
+def test_stitch_vertical_aspect_canvas(tmp_path: Path) -> None:
+    audio = tmp_path / "s000.wav"
+    _make_wav(audio, duration_s=1.0)
+    vid = tmp_path / "v000.mp4"
+    _make_video(vid, duration_s=2.0, color="red")
+
+    script = {
+        "total_duration": 2.0,
+        "resolution": "480p",
+        "aspect": "9:16",
+        "entries": [
+            {"kind": "speech", "start": 0.0, "duration": 1.0, "text": "hi",
+             "audio_path": str(audio)},
+            {"kind": "video", "start": 0.0, "end": 2.0, "duration": 2.0,
+             "prompt": "red", "anchors": [], "video_path": str(vid)},
+        ],
+    }
+    script_path = tmp_path / "script.json"
+    script_path.write_text(json.dumps(script))
+    out = tmp_path / "final.mp4"
+    stitch.stitch(script_path=script_path, out_path=out)
+
+    proc = subprocess.run(
+        ["ffprobe", "-v", "error", "-select_streams", "v:0",
+         "-show_entries", "stream=width,height", "-of", "csv=p=0", str(out)],
+        check=True, capture_output=True, text=True,
+    )
+    w, h = proc.stdout.strip().split(",")
+    assert int(h) > int(w), f"expected portrait, got {w}x{h}"
+    assert int(w) == 480
+
+
 def test_stitch_rejects_invalid_script(tmp_path: Path) -> None:
     bad = {
         "total_duration": 5.0,

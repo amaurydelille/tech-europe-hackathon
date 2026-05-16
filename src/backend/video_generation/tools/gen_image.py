@@ -42,7 +42,7 @@ def gen_image(
     prompt: str,
     out: Path,
     refs: list[Path] | None = None,
-    aspect: str = "16:9",
+    aspect: str = "9:16",
     *,
     fal: FalLike | None = None,
 ) -> dict:
@@ -89,7 +89,7 @@ def _main(argv: list[str] | None = None) -> int:
     parser.add_argument("--prompt", required=True)
     parser.add_argument("--ref", action="append", default=[], type=Path,
                         help="Optional reference image path (repeatable).")
-    parser.add_argument("--aspect", default="16:9")
+    parser.add_argument("--aspect", default="9:16")
     parser.add_argument("--out", required=True, type=Path)
     args = parser.parse_args(argv)
 

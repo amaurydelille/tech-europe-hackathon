@@ -106,7 +106,7 @@ def _main(argv: list[str] | None = None) -> int:
     parser.add_argument("--image", required=True, type=Path)
     parser.add_argument("--duration", required=True, type=int, choices=sorted(ALLOWED_DURATIONS))
     parser.add_argument("--resolution", default="480p", choices=sorted(ALLOWED_RESOLUTIONS))
-    parser.add_argument("--aspect", default="16:9", choices=sorted(ALLOWED_ASPECTS))
+    parser.add_argument("--aspect", default="9:16", choices=sorted(ALLOWED_ASPECTS))
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--out", required=True, type=Path)
     args = parser.parse_args(argv)

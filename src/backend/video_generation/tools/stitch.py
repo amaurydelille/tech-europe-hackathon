@@ -15,11 +15,23 @@ from .validate_script import (
     validate_script,
 )
 
-RESOLUTION_DIMENSIONS = {
-    "480p": (854, 480),
-    "720p": (1280, 720),
-    "1080p": (1920, 1080),
-}
+SHORT_SIDE = {"480p": 480, "720p": 720, "1080p": 1080}
+
+
+def _canvas_dimensions(resolution: str, aspect: str) -> tuple[int, int]:
+    short = SHORT_SIDE.get(resolution, SHORT_SIDE[DEFAULT_RESOLUTION])
+    num, _, den = aspect.partition(":")
+    a, b = int(num), int(den)
+    if a >= b:  # landscape or square
+        height = short
+        width = round(short * a / b)
+    else:  # portrait
+        width = short
+        height = round(short * b / a)
+    # ensure even dimensions for libx264
+    width += width % 2
+    height += height % 2
+    return width, height
 
 
 def _resolve_path(script_dir: Path, raw: str) -> Path:
@@ -50,9 +62,7 @@ def stitch(script_path: Path, out_path: Path) -> dict:
     script: Script = validate_script(script_path)
     script_dir = script_path.parent
 
-    width, height = RESOLUTION_DIMENSIONS.get(
-        script.resolution, RESOLUTION_DIMENSIONS[DEFAULT_RESOLUTION]
-    )
+    width, height = _canvas_dimensions(script.resolution, script.aspect)
 
     visuals = sorted(
         (e for e in script.entries if not isinstance(e, SpeechEntry)),

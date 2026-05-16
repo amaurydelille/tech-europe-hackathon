@@ -17,7 +17,7 @@ SEEDREAM_EDIT_MODEL_ID = "fal-ai/bytedance/seedream/v4/edit"
 
 DEFAULT_VOICE_ID = "YTpq7expH9539ERJ"
 DEFAULT_RESOLUTION = "480p"
-DEFAULT_ASPECT = "16:9"
+DEFAULT_ASPECT = "9:16"
 
 
 def gradium_api_key() -> str:
