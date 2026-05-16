@@ -97,7 +97,7 @@ Read the JSON output to learn the true `duration` and use it when placing the sp
 
 **Default to animated stills, not real video.** `gen_video` takes 1–3 minutes per clip; `animate_image` is near-instant (ffmpeg only, no API call). Reserve `gen_video` for shots where you genuinely need motion the still cannot fake (water flowing, marching armies, gestures). For everything else — establishing shots, portraits, maps, atmospheric scenes — generate an intermediate still and use `animate_image` on it (2–5 s depending on the importance of the image).
 
-**Minimum real video.** Every run must include a certain amount (check the proportion written below) of `gen_video` clips, and each one must earn the cost — pick a moment with motion that an animated still can't fake, and prompt for that motion explicitly. If the clip could be replaced by an `animate_image` without anyone noticing, it's the wrong shot.
+**Minimum real video.** Every run must include a certain amount (check the proportion written below) of `gen_video` clips, and each one must earn the cost — pick a moment with motion that an animated still can't fake (like very cinema-worthy moments, or gestures, etc), and prompt for that motion explicitly. If the clip could be replaced by an `animate_image` without anyone noticing, it's the wrong shot.
 
 **Time budget for real video.** The total wall-time of your `gen_video` clips should be **~{{REAL_VIDEO_PERCENT}}% of the target video duration** (about **{{REAL_VIDEO_SECONDS}} seconds** of real-video footage in this run). Spend that budget on the shots where motion most carries the narrative; cover everything else with `animate_image`. Going over budget is not that much of an issue if worth it.
 
