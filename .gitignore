@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Environments
+.venv/
+.env
+.env.*
+!.env.example
+
+# uv
+# (uv.lock IS committed)
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+
+# Scratch
+tmp/
