@@ -102,15 +102,16 @@ def _extract_timestamps(result) -> list[dict]:
 def gen_tts(
     text: str,
     out: Path,
-    voice_id: str | None = None,
+    voice_id: str,
     *,
     client_factory: Callable | None = None,
 ) -> dict:
     if not text.strip():
         raise ValueError("text is empty")
+    if not voice_id:
+        raise ValueError("voice_id is required (pick one from the prompt's voice catalog)")
     out = Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
-    voice_id = voice_id or config.voice_id
     factory = client_factory or _default_client_factory
     client = factory()
     result = asyncio.run(_synthesize_with_retry(text, voice_id, client))
@@ -127,7 +128,8 @@ def gen_tts(
 def _main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Gradium text-to-speech to WAV.")
     parser.add_argument("--text", required=True)
-    parser.add_argument("--voice-id", default=None)
+    parser.add_argument("--voice-id", required=True,
+                        help="Voice id from the prompt's voice catalog. No default.")
     parser.add_argument("--out", required=True, type=Path)
     args = parser.parse_args(argv)
 

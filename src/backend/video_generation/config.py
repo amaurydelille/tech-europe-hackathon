@@ -21,8 +21,14 @@ class Models(BaseModel):
     seedream_edit: str
 
 
+class Voice(BaseModel):
+    id: str
+    name: str
+    description: str
+
+
 class Config(BaseModel):
-    voice_id: str
+    voices: list[Voice]
     resolution: str
     aspect: str
     target_duration_seconds: int

@@ -95,6 +95,7 @@ def test_gen_tts_emits_timestamps(tmp_path: Path) -> None:
     result = gen_tts.gen_tts(
         text="Hello world",
         out=out,
+        voice_id="voice-xyz",
         client_factory=lambda: client,
     )
 
@@ -133,7 +134,7 @@ def test_gen_tts_retries_on_concurrency_error(tmp_path: Path, monkeypatch) -> No
     client = _ConcurrencyThenSuccessClient(wav, fail_n=1, segments=segments)
     out = tmp_path / "speech.wav"
 
-    result = gen_tts.gen_tts(text="hi", out=out, client_factory=lambda: client)
+    result = gen_tts.gen_tts(text="hi", out=out, voice_id="v", client_factory=lambda: client)
 
     assert client.attempts == 2
     assert result["timestamps"][0]["text"] == "hi"
@@ -146,7 +147,8 @@ def test_gen_tts_does_not_retry_other_errors(tmp_path: Path) -> None:
 
     out = tmp_path / "speech.wav"
     with pytest.raises(RuntimeError, match="voice_id is unknown"):
-        gen_tts.gen_tts(text="hi", out=out, client_factory=lambda: _AlwaysBadClient())
+        gen_tts.gen_tts(text="hi", out=out, voice_id="v",
+                        client_factory=lambda: _AlwaysBadClient())
 
 
 async def _noop_awaitable():
@@ -162,23 +164,17 @@ def test_gen_tts_raises_when_sdk_returns_no_timestamps(tmp_path: Path) -> None:
         gen_tts.gen_tts(
             text="hi",
             out=out,
+            voice_id="v",
             client_factory=lambda: client,
         )
 
 
-def test_gen_tts_uses_default_voice_id_when_missing(tmp_path: Path) -> None:
-    from backend.video_generation.config import config as cfg
-
+def test_gen_tts_requires_voice_id(tmp_path: Path) -> None:
     wav = _make_wav_bytes(duration_s=1.0)
     client = _FakeClient(wav)
     out = tmp_path / "speech.wav"
-
-    gen_tts.gen_tts(
-        text="hi",
-        out=out,
-        client_factory=lambda: client,
-    )
-    assert client.calls[0]["setup"]["voice_id"] == cfg.voice_id
+    with pytest.raises(ValueError, match="voice_id is required"):
+        gen_tts.gen_tts(text="hi", out=out, voice_id="", client_factory=lambda: client)
 
 
 def test_gen_tts_uses_ffprobe_duration(tmp_path: Path, monkeypatch) -> None:
@@ -191,6 +187,7 @@ def test_gen_tts_uses_ffprobe_duration(tmp_path: Path, monkeypatch) -> None:
     result = gen_tts.gen_tts(
         text="hello",
         out=out,
+        voice_id="v",
         client_factory=lambda: client,
     )
 
@@ -240,7 +237,7 @@ def factory():
     out = tmp_path / "out.wav"
     proc = subprocess.run(
         [sys.executable, "-m", "backend.video_generation.tools.gen_tts",
-         "--text", "hello", "--out", str(out)],
+         "--text", "hello", "--voice-id", "test-voice", "--out", str(out)],
         env=env,
         check=True,
         capture_output=True,

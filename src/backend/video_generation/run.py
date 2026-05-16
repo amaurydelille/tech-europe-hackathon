@@ -15,6 +15,13 @@ INSPECTION_GUIDE_PATH = Path(__file__).parent / "inspection_guide.md"
 DEFAULT_CODEX_MODEL: str | None = None  # let codex use its config default
 
 
+def _render_voice_catalog() -> str:
+    lines = []
+    for v in config.voices:
+        lines.append(f"- **{v.name}** (`{v.id}`) — {v.description}")
+    return "\n".join(lines)
+
+
 def _render_instructions(target_duration_seconds: int) -> str:
     template = INSTRUCTIONS_PATH.read_text()
     inspection_guide = INSPECTION_GUIDE_PATH.read_text().rstrip()
@@ -26,6 +33,7 @@ def _render_instructions(target_duration_seconds: int) -> str:
         .replace("{{INSPECTION_GUIDE}}", inspection_guide)
         .replace("{{REAL_VIDEO_PERCENT}}", str(real_video_percent))
         .replace("{{REAL_VIDEO_SECONDS}}", str(real_video_seconds))
+        .replace("{{VOICE_CATALOG}}", _render_voice_catalog())
     )
 
 
