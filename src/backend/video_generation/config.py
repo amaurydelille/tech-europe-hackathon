@@ -1,0 +1,61 @@
+from __future__ import annotations
+
+import json
+import os
+from pathlib import Path
+
+from dotenv import load_dotenv
+from pydantic import BaseModel
+
+load_dotenv()
+
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+TMP_ROOT = REPO_ROOT / "tmp" / "video_generation"
+CONFIG_PATH = Path(__file__).parent / "config.json"
+
+
+class Models(BaseModel):
+    seedance: str
+    seedream_text_to_image: str
+    seedream_edit: str
+
+
+class Voice(BaseModel):
+    id: str
+    name: str
+    description: str
+    # Measured words-per-second cadence at the configured padding_bonus.
+    # Use to plan line lengths (max words for a given target duration).
+    wps: float
+
+
+class Config(BaseModel):
+    voices: list[Voice]
+    resolution: str
+    aspect: str
+    target_duration_seconds: int
+    real_video_time_share: float
+    # Speed multiplier applied to the WAV after TTS via ffmpeg atempo
+    # (no pitch shift). 1.0 = unchanged, 1.1 = 10% faster.
+    tts_speed: float
+    # Speed multiplier used when brainrot_mode is on. Same semantics.
+    brainrot_speed: float
+    models: Models
+
+
+config: Config = Config.model_validate(json.loads(CONFIG_PATH.read_text()))
+
+
+def gradium_api_key() -> str:
+    key = os.environ.get("GRADIUM_API_KEY")
+    if not key:
+        raise RuntimeError("GRADIUM_API_KEY is not set in the environment")
+    return key
+
+
+def fal_api_key() -> str:
+    key = os.environ.get("FAL_KEY")
+    if not key:
+        raise RuntimeError("FAL_KEY is not set in the environment")
+    return key

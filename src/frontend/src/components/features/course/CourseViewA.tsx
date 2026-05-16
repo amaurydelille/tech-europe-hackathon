@@ -9,66 +9,68 @@ import {
 } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
+import { QRCodeSVG } from "qrcode.react";
 import type { ParsedCourse, Block, ListItem } from "@/lib/parseCourse";
 
-const PIP_THRESHOLD = 60;
-
 // ── helpers ───────────────────────────────────────────────────────────
-function fmtTime(p: number, total = 118) {
-  const s = Math.round(p * total);
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
-}
-
-// ── Napoleon silhouette (from design) ────────────────────────────────
-function NapoleonSVG() {
-  return (
-    <svg
-      viewBox="0 0 200 320"
-      width="100%"
-      height="100%"
-      style={{ position: "absolute", inset: 0 }}
-      preserveAspectRatio="xMidYMid slice"
-      aria-hidden
-    >
-      <defs>
-        <linearGradient id="cap" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#3a2a4a" />
-          <stop offset="1" stopColor="#2a1a2a" />
-        </linearGradient>
-        <linearGradient id="coat" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#5a3a3a" />
-          <stop offset="1" stopColor="#2a1a1a" />
-        </linearGradient>
-      </defs>
-      <path d="M50 150q50-50 100 0v10q-50-10-100 0z" fill="url(#cap)" />
-      <ellipse cx="100" cy="180" rx="32" ry="40" fill="#d8b89a" />
-      <path d="M50 230q50-10 100 0v90H50z" fill="url(#coat)" />
-      <path d="M70 240l30 12 30-12v6l-30 12-30-12z" fill="#B89968" opacity="0.85" />
-      <ellipse cx="100" cy="280" rx="14" ry="8" fill="#d8b89a" opacity="0.85" />
-    </svg>
-  );
+function fmtSec(s: number) {
+  const t = Math.max(0, Math.round(s));
+  return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`;
 }
 
 // ── Video block ───────────────────────────────────────────────────────
 interface VideoBlockProps {
   isPlaying: boolean;
   progress: number;
-  pip?: boolean;
   onTogglePlay: () => void;
   onSeek: (p: number) => void;
 }
 
-function VideoBlock({ isPlaying, progress, pip = false, onTogglePlay, onSeek }: VideoBlockProps) {
-  const seekBar = useRef<HTMLDivElement>(null);
+interface Cue { start: number; end: number; text: string }
 
-  const handleSeekClick = useCallback(
-    (e: React.MouseEvent<HTMLDivElement>) => {
-      if (!seekBar.current) return;
-      const { left, width } = seekBar.current.getBoundingClientRect();
-      onSeek(Math.max(0, Math.min(1, (e.clientX - left) / width)));
-    },
-    [onSeek]
-  );
+function parseSRT(raw: string): Cue[] {
+  return raw.trim().split(/\n\n+/).flatMap((block) => {
+    const lines = block.trim().split("\n");
+    if (lines.length < 3) return [];
+    const times = lines[1].split(" --> ");
+    const parseT = (t: string) => {
+      const [h, m, rest] = t.trim().split(":");
+      const [s, ms] = rest.replace(",", ".").split(".");
+      return +h * 3600 + +m * 60 + +s + +(ms ?? 0) / 1000;
+    };
+    return [{ start: parseT(times[0]), end: parseT(times[1]), text: lines.slice(2).join(" ").trim() }];
+  });
+}
+
+function VideoBlock({ isPlaying, progress, onTogglePlay, onSeek }: VideoBlockProps) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const cuesRef = useRef<Cue[]>([]);
+  const [subtitle, setSubtitle] = useState("");
+
+  // Load and parse SRT once
+  useEffect(() => {
+    fetch("/final.srt")
+      .then((r) => r.text())
+      .then((raw) => { cuesRef.current = parseSRT(raw); })
+      .catch(() => {});
+  }, []);
+
+  // Sync play/pause to the video element
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    if (isPlaying) v.play().catch(() => {});
+    else v.pause();
+  }, [isPlaying]);
+
+  // Feed real video time back as progress + update subtitle
+  const handleTimeUpdate = useCallback(() => {
+    const v = videoRef.current;
+    if (!v || !v.duration) return;
+    onSeek(v.currentTime / v.duration);
+    const cue = cuesRef.current.find((c) => v.currentTime >= c.start && v.currentTime <= c.end);
+    setSubtitle(cue?.text ?? "");
+  }, [onSeek]);
 
   return (
     <div
@@ -77,23 +79,25 @@ function VideoBlock({ isPlaying, progress, pip = false, onTogglePlay, onSeek }: 
         width: "100%",
         height: "100%",
         overflow: "hidden",
-        background: "linear-gradient(180deg, #2a2520 0%, #1a1714 100%)",
+        background: "#000",
       }}
     >
-      {/* colour wash */}
-      <div
+      {/* real video */}
+      <video
+        ref={videoRef}
+        src="/final.mp4"
+        onTimeUpdate={handleTimeUpdate}
+        onEnded={() => onSeek(1)}
+        playsInline
+        preload="metadata"
         style={{
           position: "absolute",
           inset: 0,
-          background:
-            "radial-gradient(ellipse at 50% 35%, rgba(255,181,160,0.28), transparent 55%)," +
-            "radial-gradient(ellipse at 30% 85%, rgba(199,191,255,0.28), transparent 55%)",
-          pointerEvents: "none",
+          width: "100%",
+          height: "100%",
+          objectFit: "cover",
         }}
       />
-
-      {/* Napoleon silhouette */}
-      <NapoleonSVG />
 
       {/* play / pause overlay */}
       <button
@@ -104,8 +108,8 @@ function VideoBlock({ isPlaying, progress, pip = false, onTogglePlay, onSeek }: 
           left: "50%",
           top: "50%",
           transform: "translate(-50%,-50%)",
-          width: pip ? 36 : 64,
-          height: pip ? 36 : 64,
+          width: 64,
+          height: 64,
           borderRadius: "50%",
           background: "rgba(255,255,255,0.88)",
           backdropFilter: "blur(8px)",
@@ -117,180 +121,245 @@ function VideoBlock({ isPlaying, progress, pip = false, onTogglePlay, onSeek }: 
           boxShadow: "0 8px 24px rgba(0,0,0,0.30)",
           cursor: "pointer",
           WebkitTapHighlightColor: "transparent",
+          opacity: isPlaying ? 0 : 1,
+          transition: "opacity 0.2s",
         }}
       >
-        {isPlaying ? (
-          <svg viewBox="0 0 24 24" fill="currentColor" width={pip ? 14 : 26} height={pip ? 14 : 26} aria-hidden>
-            <rect x="6" y="5" width="4" height="14" rx="1" />
-            <rect x="14" y="5" width="4" height="14" rx="1" />
-          </svg>
-        ) : (
-          <svg viewBox="0 0 24 24" fill="currentColor" width={pip ? 14 : 26} height={pip ? 14 : 26} aria-hidden>
-            <path d="M7 5v14l12-7z" />
-          </svg>
-        )}
+        <svg viewBox="0 0 24 24" fill="currentColor" width={26} height={26} aria-hidden>
+          <path d="M7 5v14l12-7z" />
+        </svg>
       </button>
 
-      {/* bottom controls — hidden in PiP */}
-      {!pip && (
-        <div
-          style={{
-            position: "absolute",
-            left: 0,
-            right: 0,
-            bottom: 0,
-            padding: "0 18px 16px",
-            display: "flex",
-            flexDirection: "column",
-            gap: 10,
-            background: "linear-gradient(180deg, transparent, rgba(0,0,0,0.52))",
-          }}
-        >
-          {/* caption pill */}
-          <div
-            style={{
-              alignSelf: "center",
-              padding: "8px 14px",
-              borderRadius: 14,
-              background: "rgba(0,0,0,0.46)",
-              backdropFilter: "blur(12px)",
-              color: "#fff",
-              fontSize: 14,
-              fontWeight: 500,
-              textAlign: "center",
-              maxWidth: "90%",
-              fontFamily: "var(--f-body)",
-              lineHeight: 1.4,
-            }}
-          >
-            On 18 May 1804, the Senate proclaimed Napoleon Emperor of the French…
-          </div>
+      {/* tap anywhere to toggle (invisible full overlay) */}
+      <div
+        onClick={onTogglePlay}
+        style={{ position: "absolute", inset: 0, cursor: "pointer" }}
+      />
 
-          {/* seek bar */}
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span
-              style={{
-                fontSize: 11,
-                color: "rgba(255,255,255,0.85)",
-                fontVariantNumeric: "tabular-nums",
-                minWidth: 32,
-                fontFamily: "var(--f-body)",
-              }}
-            >
-              {fmtTime(progress)}
-            </span>
-            <div
-              ref={seekBar}
-              onClick={handleSeekClick}
-              style={{
-                flex: 1,
-                height: 3,
-                borderRadius: 2,
-                background: "rgba(255,255,255,0.25)",
-                cursor: "pointer",
-                position: "relative",
-              }}
-            >
-              <div
-                style={{
-                  width: `${progress * 100}%`,
-                  height: "100%",
-                  background: "#fff",
-                  borderRadius: 2,
-                  position: "relative",
-                  transition: "width 0.1s linear",
-                }}
-              >
-                <div
-                  style={{
-                    position: "absolute",
-                    right: -5,
-                    top: -3,
-                    width: 9,
-                    height: 9,
-                    borderRadius: "50%",
-                    background: "#fff",
-                  }}
-                />
-              </div>
-            </div>
-            <span
-              style={{
-                fontSize: 11,
-                color: "rgba(255,255,255,0.85)",
-                fontVariantNumeric: "tabular-nums",
-                fontFamily: "var(--f-body)",
-              }}
-            >
-              {fmtTime(1)}
-            </span>
+      {/* bottom controls */}
+      <div
+        style={{
+          position: "absolute",
+          left: 0,
+          right: 0,
+          bottom: 0,
+          padding: "0 18px 16px",
+          display: "flex",
+          flexDirection: "column",
+          gap: 10,
+          background: "linear-gradient(180deg, transparent, rgba(0,0,0,0.6))",
+        }}
+      >
+        {/* subtitle */}
+        {subtitle && (
+          <div style={{
+            alignSelf: "center",
+            marginBottom: 8,
+            padding: "6px 14px",
+            borderRadius: 10,
+            background: "rgba(0,0,0,0.55)",
+            backdropFilter: "blur(10px)",
+            color: "#fff",
+            fontSize: 20,
+            fontWeight: 500,
+            textAlign: "center",
+            maxWidth: "88%",
+            fontFamily: "var(--f-body)",
+            lineHeight: 1.4,
+            pointerEvents: "none",
+          }}>
+            {subtitle}
+          </div>
+        )}
+
+        {/* progress bar — clickable seek */}
+        <div
+          onClick={(e) => {
+            const v = videoRef.current;
+            if (!v || !v.duration) return;
+            const rect = e.currentTarget.getBoundingClientRect();
+            const pct = (e.clientX - rect.left) / rect.width;
+            v.currentTime = pct * v.duration;
+          }}
+          style={{ height: 12, display: "flex", alignItems: "center", cursor: "pointer", pointerEvents: "auto" }}
+        >
+          <div style={{ width: "100%", height: 3, borderRadius: 2, background: "rgba(255,255,255,0.25)", overflow: "hidden" }}>
+            <div style={{ width: `${progress * 100}%`, height: "100%", background: "#fff", borderRadius: 2, transition: "width 0.25s linear" }} />
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }
 
-// ── More menu ─────────────────────────────────────────────────────────
-function MoreMenu({ onClose }: { onClose: () => void }) {
-  const items = [
-    { icon: "M4 4h12a3 3 0 013 3v13H7a3 3 0 01-3-3V4z M4 17a3 3 0 013-3h12", label: "Save to library" },
-    { icon: "M12 3v13M7 8l5-5 5 5M5 14v5a2 2 0 002 2h10a2 2 0 002-2v-5", label: "Share course" },
-    { icon: "M20 11a8 8 0 10-2.5 5.8M20 4v7h-7", label: "Regenerate" },
-  ];
+// ── Share modal ───────────────────────────────────────────────────────
+function ShareModal({ onClose }: { onClose: () => void }) {
+  const url = typeof window !== "undefined" ? window.location.href : "";
+  const [copied, setCopied] = useState(false);
+
+  const copyLink = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // clipboard not available
+    }
+  }, [url]);
 
   return (
     <>
-      <div
-        style={{ position: "fixed", inset: 0, zIndex: 40 }}
-        onClick={onClose}
-      />
+      {/* backdrop */}
       <motion.div
-        initial={{ opacity: 0, scale: 0.92, y: -8 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.92, y: -8 }}
-        transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] as [number, number, number, number] }}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.2 }}
+        onClick={onClose}
         style={{
-          position: "absolute",
-          top: 58,
-          right: 14,
-          zIndex: 50,
-          background: "var(--surface)",
-          border: "1px solid var(--border)",
-          borderRadius: 18,
-          boxShadow: "var(--shadow-lg)",
-          overflow: "hidden",
-          minWidth: 188,
+          position: "fixed",
+          inset: 0,
+          zIndex: 80,
+          background: "rgba(0,0,0,0.55)",
+          backdropFilter: "blur(4px)",
+        }}
+      />
+      {/* centering wrapper */}
+      <div
+        style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: 90,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          pointerEvents: "none",
         }}
       >
-        {items.map((item, i) => (
-          <button
-            key={item.label}
-            onClick={onClose}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 12,
-              width: "100%",
-              padding: "13px 16px",
-              background: "none",
-              border: "none",
-              borderTop: i > 0 ? "1px solid var(--border)" : "none",
-              color: "var(--text)",
-              fontFamily: "var(--f-body)",
-              fontSize: 14,
-              fontWeight: 500,
-              cursor: "pointer",
-              textAlign: "left",
-            }}
-          >
-            <svg viewBox="0 0 24 24" fill="none" width={18} height={18} aria-hidden>
-              <path d={item.icon} stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-            {item.label}
-          </button>
-        ))}
+      {/* card */}
+      <motion.div
+        initial={{ opacity: 0, scale: 0.9, y: 24 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.9, y: 24 }}
+        transition={{ duration: 0.22, ease: [0.34, 1.56, 0.64, 1] as [number, number, number, number] }}
+        style={{
+          pointerEvents: "auto",
+          background: "var(--surface)",
+          border: "1px solid var(--border)",
+          borderRadius: 28,
+          boxShadow: "0 24px 60px rgba(0,0,0,0.3)",
+          padding: "28px 24px 24px",
+          width: "min(340px, calc(100vw - 40px))",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: 20,
+        }}
+      >
+        {/* close */}
+        <button
+          onClick={onClose}
+          aria-label="Close"
+          style={{
+            position: "absolute",
+            top: 14,
+            right: 14,
+            width: 30,
+            height: 30,
+            borderRadius: 15,
+            background: "var(--bg-tint)",
+            border: "none",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            color: "var(--text-2)",
+          }}
+        >
+          <svg viewBox="0 0 24 24" fill="none" width={14} height={14} aria-hidden>
+            <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          </svg>
+        </button>
+
+        {/* title */}
+        <div style={{ fontFamily: "var(--f-head)", fontSize: 18, fontWeight: 500, color: "var(--text)", letterSpacing: "-0.02em" }}>
+          Share this course
+        </div>
+
+        {/* QR code */}
+        <div
+          style={{
+            padding: 14,
+            borderRadius: 18,
+            background: "#fff",
+            boxShadow: "0 4px 16px rgba(0,0,0,0.08)",
+          }}
+        >
+          <QRCodeSVG value={url || "https://tutor.ai"} size={200} />
+        </div>
+
+        {/* URL display */}
+        <div
+          style={{
+            width: "100%",
+            padding: "10px 14px",
+            borderRadius: 12,
+            background: "var(--bg-tint)",
+            border: "1px solid var(--border)",
+            fontSize: 12,
+            color: "var(--text-2)",
+            fontFamily: "var(--f-body)",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            textAlign: "center",
+          }}
+        >
+          {url}
+        </div>
+
+        {/* copy button */}
+        <button
+          onClick={copyLink}
+          style={{
+            width: "100%",
+            height: 50,
+            borderRadius: 25,
+            border: "none",
+            background: copied
+              ? "linear-gradient(180deg,#3d7a55 0%,#2a5e3f 100%)"
+              : "linear-gradient(180deg,#1F1B14 0%,#0B0907 100%)",
+            color: "#FAF7F0",
+            fontFamily: "var(--f-body)",
+            fontWeight: 600,
+            fontSize: 15,
+            cursor: "pointer",
+            transition: "background 0.3s",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 8,
+          }}
+        >
+          {copied ? (
+            <>
+              <svg viewBox="0 0 24 24" fill="none" width={16} height={16} aria-hidden>
+                <path d="M5 13l4 4L19 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              Copied!
+            </>
+          ) : (
+            <>
+              <svg viewBox="0 0 24 24" fill="none" width={16} height={16} aria-hidden>
+                <rect x="9" y="9" width="13" height="13" rx="2" stroke="currentColor" strokeWidth="1.7" />
+                <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+              </svg>
+              Copy link
+            </>
+          )}
+        </button>
       </motion.div>
+      </div>
     </>
   );
 }
@@ -674,7 +743,7 @@ function SourcesSection({
 
 // ── Article content (dynamic) ─────────────────────────────────────────
 function ArticleContent({ course }: { course: ParsedCourse }) {
-  const { title, chapters, sources } = course;
+  const { title, chapters, sources, totalReadMin } = course;
   const [highlightedSource, setHighlightedSource] = useState<number | null>(null);
   const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -735,7 +804,7 @@ function ArticleContent({ course }: { course: ParsedCourse }) {
                   marginBottom: 8,
                 }}
               >
-                Chapter 1 · {fmtReadTime(ch.readTimeSec)} read
+                {totalReadMin} min read
               </div>
               <h2
                 style={{
@@ -858,32 +927,29 @@ type Phase = "video" | "pivot" | "reading";
 // ── Main component ────────────────────────────────────────────────────
 export function CourseViewA({ course }: { course: ParsedCourse }) {
   const [isPlaying, setIsPlaying] = useState(false);
-  const [progress, setProgress] = useState(0.36);
+  const [progress, setProgress] = useState(0);
   const [phase, setPhase] = useState<Phase>("video");
+  const [showShare, setShowShare] = useState(false);
   const [readProgress, setReadProgress] = useState(0);
   const articleRef = useRef<HTMLDivElement>(null);
   const outerRef = useRef<HTMLDivElement>(null);
-  const rafRef = useRef<number>(0);
   const phaseRef = useRef<Phase>("video");
   const touchStartY = useRef(0);
+  const lastPhaseChange = useRef(0); // ms timestamp — absorbs inertia bleed
   const router = useRouter();
 
   // keep ref in sync so non-React event listeners always read current phase
   useEffect(() => { phaseRef.current = phase; }, [phase]);
 
-  // advance video progress when playing
-  useEffect(() => {
-    if (!isPlaying) return;
-    function tick() {
-      setProgress((p) => {
-        if (p >= 1) { setIsPlaying(false); return 1; }
-        return p + 0.0003;
-      });
-      rafRef.current = requestAnimationFrame(tick);
+  // Central transition — records timestamp so inertia events are ignored for 350 ms
+  const changePhase = useCallback((next: Phase) => {
+    lastPhaseChange.current = Date.now();
+    phaseRef.current = next;
+    if (next === "reading" && articleRef.current) {
+      articleRef.current.style.overflowY = "auto";
     }
-    rafRef.current = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(rafRef.current);
-  }, [isPlaying]);
+    setPhase(next);
+  }, []);
 
   // Non-passive touch handler — manages all three phases
   useEffect(() => {
@@ -895,27 +961,27 @@ export function CourseViewA({ course }: { course: ParsedCourse }) {
     }
 
     function onTouchMove(e: TouchEvent) {
-      const dy = touchStartY.current - e.touches[0].clientY; // +ve = swipe up (scroll down)
+      if (Date.now() - lastPhaseChange.current < 350) { e.preventDefault(); return; }
+
+      const dy = touchStartY.current - e.touches[0].clientY;
       const cur = phaseRef.current;
 
-      if (cur === "reading") return; // article handles its own scroll
+      if (cur === "reading") return;
 
       if (cur === "video" && dy > 12) {
         e.preventDefault();
-        setPhase("pivot");
-        touchStartY.current = e.touches[0].clientY; // reset baseline for next phase
+        changePhase("reading");
+        touchStartY.current = e.touches[0].clientY;
         return;
       }
 
       if (cur === "pivot") {
         if (dy > 12) {
-          // unlock article — also poke the DOM directly so the browser sees it immediately
-          if (articleRef.current) articleRef.current.style.overflowY = "auto";
-          setPhase("reading");
+          changePhase("reading");
           touchStartY.current = e.touches[0].clientY;
         } else if (dy < -12) {
           e.preventDefault();
-          setPhase("video");
+          changePhase("video");
           touchStartY.current = e.touches[0].clientY;
         }
       }
@@ -927,22 +993,25 @@ export function CourseViewA({ course }: { course: ParsedCourse }) {
       el.removeEventListener("touchstart", onTouchStart);
       el.removeEventListener("touchmove", onTouchMove);
     };
-  }, []);
+  }, [changePhase]);
 
-  // Wheel (desktop) — same three-phase logic
+  // Wheel (desktop) — same three-phase logic + inertia guard
   const handleWheel = useCallback((e: React.WheelEvent) => {
+    if (Date.now() - lastPhaseChange.current < 350) return;
     const cur = phaseRef.current;
     if (cur === "reading") return;
-    if (cur === "video" && e.deltaY > 0) { setPhase("pivot"); return; }
-    if (cur === "pivot" && e.deltaY > 0) { setPhase("reading"); return; }
-    if (cur === "pivot" && e.deltaY < 0) { setPhase("video"); return; }
-  }, []);
+    if (cur === "video" && e.deltaY > 0) { changePhase("reading"); return; }
+    if (cur === "pivot" && e.deltaY > 0) { changePhase("reading"); return; }
+    if (cur === "pivot" && e.deltaY < 0) { changePhase("video"); return; }
+  }, [changePhase]);
 
   // Article scroll — track progress; reaching top snaps back to pivot
   const handleScroll = useCallback((e: UIEvent<HTMLDivElement>) => {
+    if (Date.now() - lastPhaseChange.current < 350) return;
     const el = e.currentTarget;
     const scrollTop = el.scrollTop;
     if (scrollTop === 0 && phaseRef.current === "reading") {
+      phaseRef.current = "pivot";
       setPhase("pivot");
     }
     const total = el.scrollHeight - el.clientHeight;
@@ -1001,13 +1070,13 @@ export function CourseViewA({ course }: { course: ParsedCourse }) {
           gap: 10,
         }}
       >
-        <PillBtn ariaLabel="Back" onClick={() => router.back()}>
+        <PillBtn ariaLabel="Back" onClick={() => router.push("/chat")}>
           <svg viewBox="0 0 24 24" fill="none" width={20} height={20} aria-hidden>
             <path d="M14 6l-6 6 6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </PillBtn>
         <div style={{ flex: 1 }} />
-        <PillBtn ariaLabel="Share" onClick={() => navigator.share?.({ title: course.title, url: window.location.href })}>
+        <PillBtn ariaLabel="Share" onClick={() => setShowShare(true)}>
           <svg viewBox="0 0 24 24" fill="none" width={18} height={18} aria-hidden>
             <circle cx="18" cy="5" r="2.5" stroke="currentColor" strokeWidth="1.7" />
             <circle cx="6" cy="12" r="2.5" stroke="currentColor" strokeWidth="1.7" />
@@ -1030,7 +1099,7 @@ export function CourseViewA({ course }: { course: ParsedCourse }) {
           isPlaying={isPlaying}
           progress={progress}
           onTogglePlay={togglePlay}
-          onSeek={seek}
+          onSeek={seek} // also called by video's onTimeUpdate
         />
       </div>
 
@@ -1038,10 +1107,12 @@ export function CourseViewA({ course }: { course: ParsedCourse }) {
       <div
         ref={articleRef}
         onScroll={handleScroll}
+        className="no-scrollbar"
         style={{
           flex: 1,
           overflowY: phase === "reading" ? "auto" : "hidden",
           overflowX: "hidden",
+          scrollbarWidth: "none",
           background: "var(--surface)",
           borderRadius: phase === "video" ? "24px 24px 0 0" : "0",
           marginTop: phase === "video" ? -16 : 0,
@@ -1055,6 +1126,11 @@ export function CourseViewA({ course }: { course: ParsedCourse }) {
       >
         <ArticleContent course={course} />
       </div>
+
+      {/* ── Share modal */}
+      <AnimatePresence>
+        {showShare && <ShareModal onClose={() => setShowShare(false)} />}
+      </AnimatePresence>
     </div>
   );
 }

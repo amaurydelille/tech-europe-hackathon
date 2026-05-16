@@ -1,6 +1,8 @@
 import json
 import logging
+import os
 from pathlib import Path
+import httpx
 from .models import OnboardingData, CourseOutput
 from .query_builder import build_tavily_query
 from .scraper import search_tavily
@@ -8,6 +10,9 @@ from .validator import validate_with_gliner
 from .course_generator import generate_course
 
 OUTPUT_PATH = Path(__file__).parent.parent / "output" / "course_output.json"
+
+_VIDEO_SERVICE_URL = "http://localhost:8000"
+_VIDEO_SERVICE_ENDPOINT = "/video/generation"
 
 logging.basicConfig(
     level=logging.INFO,
@@ -44,7 +49,23 @@ def run(onboarding_data: dict) -> CourseOutput:
     OUTPUT_PATH.write_text(json.dumps(course.model_dump(), indent=2, ensure_ascii=False))
     log.info("Saved course output to %s", OUTPUT_PATH)
 
+    _trigger_video_service()
+
     return course
+
+
+def _trigger_video_service() -> None:
+    url = f"{_VIDEO_SERVICE_URL}{_VIDEO_SERVICE_ENDPOINT}"
+    try:
+        response = httpx.post(url, timeout=5)
+        response.raise_for_status()
+        log.info("Video generation service triggered successfully (%s)", url)
+    except httpx.ConnectError:
+        log.warning("Could not reach video generation service at %s — is it running?", url)
+    except httpx.HTTPStatusError as e:
+        log.warning("Video generation service returned an error: %s", e.response.status_code)
+    except Exception as e:
+        log.warning("Failed to trigger video generation service: %s", e)
 
 
 def run_from_file(path: str | Path) -> CourseOutput:
