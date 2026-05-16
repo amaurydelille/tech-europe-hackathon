@@ -32,6 +32,10 @@ Read `inputs/lesson.md`. Note the key subjects, settings, and characters that wi
 
 ### Step 2 — Plan the anchors
 
+Anchors are the **canonical, frozen references** for the few recurring subjects, characters, or settings that appear in multiple shots. They are generated once at the start and reused everywhere; their job is visual consistency, not coverage. **Keep anchors to a maximum of 3.** If you find yourself wanting a 4th, consolidate (e.g. two characters can share one group portrait) or promote that subject to an intermediate shot instead.
+
+Anchors are *not* the same as the per-shot images you'll generate later. Per-shot ("intermediate") shots are unbounded in number — see Step 6.
+
 Write `assets/anchors.json` listing each anchor:
 
 ```json
@@ -43,8 +47,6 @@ Write `assets/anchors.json` listing each anchor:
   ]
 }
 ```
-
-Aim for **2–5 anchors**. More than 5 usually means you can consolidate.
 
 ### Step 3 — Generate the reference images
 
@@ -79,7 +81,9 @@ Read the JSON output to learn the true `duration` and use it when placing the sp
 
 ### Step 6 — Generate visuals (anchored)
 
-**Default to animated stills, not Seedance video.** Seedance generation takes 1–3 minutes per clip; `animate_image` (a slow zoom on a still) takes ~1 second of ffmpeg time. Reserve real Seedance video for shots where you genuinely need motion the still cannot fake (water flowing, marching armies, gestures). For everything else — establishing shots, portraits, maps, atmospheric scenes — generate a still and animate it.
+**Two tiers of images.** The anchors from Step 3 are a small, frozen set (≤ 3) — the canon. On top of them, you'll generate **intermediate shots**: per-scene stills that depict a specific moment, framing, or composition for one segment of the video. Intermediate shots are unbounded in number — make one (or several) per shot as needed. Each one is normally anchored to the relevant ref via `--ref`, and most of them feed directly into `animate_image` to become a video segment. You can also pass an intermediate shot as `--ref` to a follow-up `gen_image` call when you want to evolve a composition while keeping continuity.
+
+**Default to animated stills, not Seedance video.** Seedance generation takes 1–3 minutes per clip; `animate_image` (a slow zoom on a still) takes ~1 second of ffmpeg time. Reserve real Seedance video for shots where you genuinely need motion the still cannot fake (water flowing, marching armies, gestures). For everything else — establishing shots, portraits, maps, atmospheric scenes — generate an intermediate still and animate it.
 
 **Time budget for Seedance.** The total wall-time of your `gen_video` clips should be **~{{SEEDANCE_PERCENT}}% of the target video duration** (about **{{SEEDANCE_SECONDS}} seconds** of Seedance footage in this run). Spend that budget on the shots where motion most carries the narrative; cover everything else with `animate_image`. Going over the budget is fine only if a shot genuinely cannot be staged any other way.
 
