@@ -25,7 +25,7 @@ When both `outputs/final.mp4` and `outputs/final.srt` exist and are valid, print
 6. **Durations from tools, not from your head.** A speech line's duration is whatever the TTS tool returns. A video clip's duration is whatever `gen_video` returns (probed from the file). Always set the `start`/`end`/`duration` fields in `script.json` from tool outputs.
 7. **Visuals cover the entire video.** The video and image entries in `script.json` must cover `[0, total_duration]` with no gaps and no overlaps. The audio (speech) sits on top of this visual track.
 8. **No silent fallback.** If any tool call fails, fix the cause (rephrase the prompt, choose a different anchor, etc.) and retry. Do not skip an entry.
-9. **Use only the tools listed below.** The "Tool reference" table at the bottom of this prompt is the complete, authoritative set. Do **not** read `~/.codex/skills/...`, do **not** invoke the built-in `image_gen`, `view_image`, or any other tool outside that table, and do **not** browse the project's own tool source code. Anything you need is already in this prompt.
+9. **Use only the tools listed below — plus Codex's built-in `view_image`.** The "Tool reference" table at the bottom of this prompt lists the project tools. You may *also* use Codex's built-in `view_image` to actually look at any PNG / sampled frame you generate (this is how you do the inspection step). Do **not** read `~/.codex/skills/...`, do **not** invoke the built-in `image_gen` (we have our own `gen_image`), and do **not** browse the project's own tool source code.
 
 ## Pipeline (follow in order)
 

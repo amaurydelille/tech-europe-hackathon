@@ -1,6 +1,6 @@
 ## Visual inspection checklist
 
-After every `gen_video` or `gen_image` call, open the generated frames (videos have `frame_paths` sampled at 2 fps; for a still, open the image directly). Be **extra critical** on these two axes — they are the most common failure modes:
+After every `gen_video` or `gen_image` call, **actually look at the output** using Codex's built-in `view_image` tool — pass the absolute path to the still (for `gen_image`) or to each entry in `frame_paths` (for `gen_video`, sampled at 2 fps). Do *not* skip this and assume the image is fine: blind generation is the most common reason runs ship distorted assets. Be **extra critical** on these two axes — they are the most common failure modes:
 
 1. **Does the action make sense cinematically?**
    - Is the camera move consistent with the prompt (steady push-in stays steady; pan keeps direction)?
