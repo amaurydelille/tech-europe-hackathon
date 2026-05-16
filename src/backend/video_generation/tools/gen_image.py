@@ -9,6 +9,26 @@ from typing import Protocol
 
 from ..config import config, fal_api_key
 
+# Short-side pixel count for generated images (long side is computed from aspect).
+# Refs anchor every later shot so we keep them generous; Seedream renders quickly
+# enough at this size.
+IMAGE_SHORT_SIDE = 1024
+
+
+def _image_dimensions(aspect: str) -> tuple[int, int]:
+    num, _, den = aspect.partition(":")
+    a, b = int(num), int(den)
+    if a >= b:
+        height = IMAGE_SHORT_SIDE
+        width = round(IMAGE_SHORT_SIDE * a / b)
+    else:
+        width = IMAGE_SHORT_SIDE
+        height = round(IMAGE_SHORT_SIDE * b / a)
+    # Some image models require multiples of 8 or 64
+    width = (width // 8) * 8
+    height = (height // 8) * 8
+    return width, height
+
 
 class FalLike(Protocol):
     def subscribe(self, application: str, arguments: dict, **kwargs): ...
@@ -34,6 +54,12 @@ class _DefaultFal:
             Path(out).write_bytes(resp.read())
 
 
+def _optional_int(value: object) -> int | None:
+    if value is None:
+        return None
+    return int(value)
+
+
 def gen_image(
     prompt: str,
     out: Path,
@@ -49,18 +75,22 @@ def gen_image(
     refs = refs or []
     fal_impl = fal or _DefaultFal()
 
+    width, height = _image_dimensions(aspect)
+    image_size = {"width": width, "height": height}
     if refs:
         image_urls = [fal_impl.upload_file(r) for r in refs]
         model = config.models.seedream_edit
         arguments = {
             "prompt": prompt,
             "image_urls": image_urls,
+            "image_size": image_size,
             "aspect_ratio": aspect,
         }
     else:
         model = config.models.seedream_text_to_image
         arguments = {
             "prompt": prompt,
+            "image_size": image_size,
             "aspect_ratio": aspect,
         }
 
@@ -73,8 +103,8 @@ def gen_image(
 
     return {
         "path": str(out),
-        "width": int(image.get("width", 0)) or None,
-        "height": int(image.get("height", 0)) or None,
+        "width": _optional_int(image.get("width")),
+        "height": _optional_int(image.get("height")),
         "model": model,
         "seed": result.get("seed"),
     }

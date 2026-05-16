@@ -6,11 +6,11 @@ import importlib
 import json
 import os
 import sys
-import wave
 from pathlib import Path
 from typing import Callable
 
 from ..config import config, gradium_api_key
+from ..ffmpeg_utils import probe_duration
 
 
 def _default_client_factory():
@@ -27,11 +27,6 @@ def _resolve_factory(spec: str | None) -> Callable:
         raise ValueError(f"invalid client factory spec: {spec!r}")
     module = importlib.import_module(module_name)
     return getattr(module, attr)
-
-
-def _wav_duration(path: Path) -> float:
-    with wave.open(str(path), "rb") as w:
-        return w.getnframes() / float(w.getframerate())
 
 
 async def _synthesize(text: str, voice_id: str, client):
@@ -61,7 +56,7 @@ def gen_tts(
     client = factory()
     result = asyncio.run(_synthesize(text, voice_id, client))
     out.write_bytes(result.raw_data)
-    duration = _wav_duration(out)
+    duration = probe_duration(out)
     return {
         "path": str(out),
         "duration": duration,

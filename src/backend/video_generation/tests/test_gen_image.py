@@ -9,8 +9,10 @@ from backend.video_generation.tools import gen_image
 
 
 class _FakeFal:
-    def __init__(self, image_bytes: bytes) -> None:
+    def __init__(self, image_bytes: bytes, *, width: int | None = 1280, height: int | None = 720) -> None:
         self.image_bytes = image_bytes
+        self.width = width
+        self.height = height
         self.subscribe_calls: list[tuple] = []
         self.upload_calls: list[Path] = []
         self._url_counter = 0
@@ -19,7 +21,7 @@ class _FakeFal:
         self.subscribe_calls.append((application, arguments))
         return {
             "images": [
-                {"url": "https://fake.fal/img.png", "width": 1280, "height": 720}
+                {"url": "https://fake.fal/img.png", "width": self.width, "height": self.height}
             ],
             "seed": 42,
         }
@@ -59,6 +61,7 @@ def test_gen_image_text_to_image_no_refs(tmp_path: Path, fake_fal: _FakeFal) -> 
     assert "text-to-image" in app
     assert args["prompt"] == "A Roman consul"
     assert args["aspect_ratio"] == "16:9"
+    assert args["image_size"]["width"] > args["image_size"]["height"]
     assert fake_fal.upload_calls == []
 
 
@@ -73,7 +76,7 @@ def test_gen_image_with_refs_uses_edit_endpoint(tmp_path: Path, fake_fal: _FakeF
         prompt="A Roman senate",
         out=out,
         refs=[ref1, ref2],
-        aspect="16:9",
+        aspect="9:16",
         fal=fake_fal,
     )
 
@@ -84,6 +87,7 @@ def test_gen_image_with_refs_uses_edit_endpoint(tmp_path: Path, fake_fal: _FakeF
         "https://fake.fal/uploaded-1.png",
         "https://fake.fal/uploaded-2.png",
     ]
+    assert args["image_size"]["height"] > args["image_size"]["width"]
 
 
 def test_gen_image_empty_prompt_rejected(tmp_path: Path, fake_fal: _FakeFal) -> None:
@@ -95,3 +99,24 @@ def test_gen_image_empty_prompt_rejected(tmp_path: Path, fake_fal: _FakeFal) -> 
             aspect="16:9",
             fal=fake_fal,
         )
+
+
+def test_gen_image_allows_missing_dimensions(tmp_path: Path) -> None:
+    fake_fal = _FakeFal(
+        image_bytes=b"\x89PNG\r\n\x1a\n" + b"\x00" * 32,
+        width=None,
+        height=None,
+    )
+    out = tmp_path / "img.png"
+
+    result = gen_image.gen_image(
+        prompt="A Roman river",
+        out=out,
+        refs=[],
+        aspect="9:16",
+        fal=fake_fal,
+    )
+
+    assert out.is_file()
+    assert result["width"] is None
+    assert result["height"] is None

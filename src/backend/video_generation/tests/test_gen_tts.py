@@ -82,6 +82,22 @@ def test_gen_tts_uses_default_voice_id_when_missing(tmp_path: Path) -> None:
     assert client.calls[0]["setup"]["voice_id"] == cfg.voice_id
 
 
+def test_gen_tts_uses_ffprobe_duration(tmp_path: Path, monkeypatch) -> None:
+    wav = _make_wav_bytes(duration_s=1.0)
+    client = _FakeClient(wav)
+    out = tmp_path / "speech.wav"
+
+    monkeypatch.setattr(gen_tts, "probe_duration", lambda path: 3.25)
+
+    result = gen_tts.gen_tts(
+        text="hello",
+        out=out,
+        client_factory=lambda: client,
+    )
+
+    assert result["duration"] == 3.25
+
+
 def test_gen_tts_cli_prints_json(tmp_path: Path, monkeypatch) -> None:
     """Run the CLI as a subprocess, with the gradium client patched via PYTHONPATH-injected fake."""
     wav = _make_wav_bytes(duration_s=0.5)

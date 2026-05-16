@@ -11,14 +11,16 @@ from .config import REPO_ROOT, config
 from .workspace import Workspace, create_workspace
 
 INSTRUCTIONS_PATH = Path(__file__).parent / "instructions.md"
+INSPECTION_GUIDE_PATH = Path(__file__).parent / "inspection_guide.md"
 DEFAULT_CODEX_MODEL: str | None = None  # let codex use its config default
 
 
 def _render_instructions(target_duration_seconds: int) -> str:
     template = INSTRUCTIONS_PATH.read_text()
+    inspection_guide = INSPECTION_GUIDE_PATH.read_text().rstrip()
     return template.replace(
         "{{TARGET_DURATION_SECONDS}}", str(target_duration_seconds)
-    )
+    ).replace("{{INSPECTION_GUIDE}}", inspection_guide)
 
 
 def _prepare_workspace(lesson_md: str) -> Workspace:

@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Protocol
 
 from ..config import config, fal_api_key
-from ..ffmpeg_utils import probe_duration, sample_frames_1fps
+from ..ffmpeg_utils import probe_duration, sample_frames
 
 ALLOWED_DURATIONS = {5, 10}
 ALLOWED_RESOLUTIONS = {"480p", "720p", "1080p"}
@@ -90,7 +90,7 @@ def gen_video(
 
     actual_duration = probe_duration(out)
     frames_dir = out.parent / f"{out.stem}.frames"
-    frame_paths = sample_frames_1fps(out, frames_dir)
+    frame_paths = sample_frames(out, frames_dir)
 
     return {
         "path": str(out),

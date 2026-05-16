@@ -15,6 +15,7 @@ When `outputs/final.mp4` exists and is valid, print the absolute path to that fi
 
 ## Hard rules (read carefully)
 
+0. **Move fast.** Do not over-iterate. One regeneration of a bad shot is usually enough; if it's still off, change strategy (different framing, animated still instead of Seedance video) rather than burning more attempts. Aim to finish the whole run in well under 10 minutes of wall-clock time.
 1. **Unity of script.** The video must feel like a single, coherent piece — one narrator voice, one visual style, one through-line. Reuse the same anchor images across multiple shots whenever the same subject, character, or setting reappears. Do not switch artistic style mid-video.
 2. **Anchors first, always.** Before generating any video or still that depicts a recurring subject, character, or location, generate a *reference image* for it. Save these in `assets/refs/`. Every later `gen_video` call must pass `--image <ref>`, and every later `gen_image` call that depicts an anchor must pass `--ref <ref>`.
 3. **Anchor reuse.** If two shots feature the same subject (e.g. "Julius Caesar", "the Rubicon riverbank"), they must reference the *same* anchor image file. Do not regenerate a new reference for the same subject.
@@ -78,7 +79,30 @@ Read the JSON output to learn the true `duration` and use it when placing the sp
 
 ### Step 6 — Generate visuals (anchored)
 
-For each video shot:
+**Default to animated stills, not Seedance video.** Seedance generation takes 1–3 minutes per clip; `animate_image` (a slow zoom on a still) takes ~1 second of ffmpeg time. Reserve real Seedance video for shots where you genuinely need motion the still cannot fake (water flowing, marching armies, gestures). For everything else — establishing shots, portraits, maps, atmospheric scenes — generate a still and animate it.
+
+**Keep individual clips short.** 5 seconds is enough for almost every beat — if you want a longer shot, prefer **two 5-second clips with different framings** (wide → close-up, or alternate angles) rather than one 10-second take. This is faster to generate and reads better cinematically.
+
+For each animated-still shot (preferred):
+
+```
+uv run python -m backend.video_generation.tools.gen_image \
+    --prompt "<detailed prompt>" \
+    --ref assets/refs/<anchor_id>.png \
+    --aspect 9:16 \
+    --out assets/image/iNNN.png
+
+uv run python -m backend.video_generation.tools.animate_image \
+    --image assets/image/iNNN.png \
+    --duration 5 \
+    --zoom-from 1.0 --zoom-to 1.10 \
+    --resolution 480p --aspect 9:16 \
+    --out assets/video/vNNN.mp4
+```
+
+The output is a regular mp4 — record it as a `video` entry in `script.json`.
+
+For each real-motion Seedance shot:
 
 ```
 uv run python -m backend.video_generation.tools.gen_video \
@@ -90,9 +114,9 @@ uv run python -m backend.video_generation.tools.gen_video \
     --out assets/video/vNNN.mp4
 ```
 
-Allowed `--duration`: `5` or `10` (Seedance 2 limit). Allowed `--resolution`: `480p` (default), `720p`, `1080p` — keep 480p unless a specific shot benefits from higher resolution; mixing resolutions per segment is allowed.
+Allowed `--duration`: `5` or `10` (Seedance 2 limit). Default to **5**. Allowed `--resolution`: `480p` (default), `720p`, `1080p`; keep 480p unless a specific shot benefits from more.
 
-For each still shot that depicts an anchor:
+For each static still shot that depicts an anchor (no animation):
 
 ```
 uv run python -m backend.video_generation.tools.gen_image \
@@ -104,7 +128,9 @@ uv run python -m backend.video_generation.tools.gen_image \
 
 For each still shot that does **not** depict any anchor (e.g. an abstract title card), omit `--ref`.
 
-The `gen_video` tool returns `frame_paths` — JPEG samples at 1 fps. **Inspect them** (you can `ls assets/video/vNNN.frames/`) to confirm the clip matches your intent. If the subject is wrong or the framing is off, rephrase and regenerate the clip.
+After every generation, apply the inspection checklist below. Don't fixate on perfection — if a shot is "good enough" after one regeneration, accept it and move on.
+
+{{INSPECTION_GUIDE}}
 
 ### Step 7 — Compose `assets/script.json`
 
@@ -171,7 +197,8 @@ The table below is the complete contract for every tool. **Do not read the tool 
 | Tool | Purpose | Required args | Output JSON |
 |---|---|---|---|
 | `gen_image` | Generate a still (anchor or scene). Uses Seedream 4 (text-to-image when no `--ref`; edit when refs supplied). | `--prompt`, `--out`; optional `--ref` (repeatable), `--aspect` | `{path, width, height, model, seed}` |
-| `gen_video` | Generate a **silent** 5s or 10s clip from a reference image. Uses Seedance 2 image-to-video with audio generation disabled. Also samples 1 fps frames you can inspect. | `--prompt`, `--image`, `--duration` (5 or 10), `--out`; optional `--resolution` (480p/720p/1080p), `--aspect`, `--seed` | `{path, duration, frame_paths, model, seed}` |
+| `gen_video` | Generate a **silent** 5s or 10s clip from a reference image. Uses Seedance 2 image-to-video with audio generation disabled. Slow (1–3 min/call). Samples 2 fps frames for inspection. | `--prompt`, `--image`, `--duration` (5 or 10), `--out`; optional `--resolution` (480p/720p/1080p), `--aspect`, `--seed` | `{path, duration, frame_paths, model, seed}` |
+| `animate_image` | Turn a still into a short clip with a slow Ken-Burns-style zoom. Pure ffmpeg, ~1 second per call. **Prefer this over `gen_video` whenever you don't need true motion.** | `--image`, `--duration`, `--out`; optional `--zoom-from`, `--zoom-to`, `--resolution`, `--aspect` | `{path, duration}` |
 | `gen_tts` | Synthesize one narration line via Gradium TTS. | `--text`, `--out`; optional `--voice-id` | `{path, duration, sample_rate}` |
 | `stitch` | Validate the script and mux all assets into the final MP4 with audio mix. | `--script`, `--out` | `{path, duration}` |
 
