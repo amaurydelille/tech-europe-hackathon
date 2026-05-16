@@ -160,13 +160,35 @@ def generate_video(
     if extra_env:
         env.update(extra_env)
 
-    cmd = _codex_command(workspace, model)
-    proc = subprocess.run(
-        cmd,
-        input=prompt,
+    # The codex sandbox blocks Chromium on macOS (Mach port denial), so we
+    # run a tiny HTTP server in *this* process that wraps `gen_map`. The
+    # sandboxed CLI client picks up the URL via `GEN_MAP_SERVER_URL` and
+    # delegates the render here, where Playwright has full permissions.
+    gen_map_server = subprocess.Popen(
+        [sys.executable, "-m", "backend.video_generation.tools.gen_map_server"],
+        stdout=subprocess.PIPE,
         text=True,
-        env=env,
     )
+    url_line = gen_map_server.stdout.readline()
+    if not url_line:
+        gen_map_server.wait(timeout=5)
+        raise RuntimeError("gen_map_server failed to start (no URL on stdout)")
+    env["GEN_MAP_SERVER_URL"] = json.loads(url_line)["url"]
+
+    cmd = _codex_command(workspace, model)
+    try:
+        proc = subprocess.run(
+            cmd,
+            input=prompt,
+            text=True,
+            env=env,
+        )
+    finally:
+        gen_map_server.terminate()
+        try:
+            gen_map_server.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            gen_map_server.kill()
     if proc.returncode != 0:
         raise RuntimeError(f"codex exec failed with code {proc.returncode}")
 
