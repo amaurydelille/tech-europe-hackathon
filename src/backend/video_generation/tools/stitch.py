@@ -6,7 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from ..config import DEFAULT_RESOLUTION
+from ..config import config
 from .validate_script import (
     ImageEntry,
     Script,
@@ -19,7 +19,7 @@ SHORT_SIDE = {"480p": 480, "720p": 720, "1080p": 1080}
 
 
 def _canvas_dimensions(resolution: str, aspect: str) -> tuple[int, int]:
-    short = SHORT_SIDE.get(resolution, SHORT_SIDE[DEFAULT_RESOLUTION])
+    short = SHORT_SIDE.get(resolution, SHORT_SIDE[config.resolution])
     num, _, den = aspect.partition(":")
     a, b = int(num), int(den)
     if a >= b:  # landscape or square

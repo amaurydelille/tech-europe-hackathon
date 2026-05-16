@@ -67,8 +67,8 @@ def test_gen_tts_writes_wav_and_returns_duration(tmp_path: Path) -> None:
     assert client.calls[0]["setup"]["output_format"] == "wav"
 
 
-def test_gen_tts_uses_default_voice_id_when_missing(tmp_path: Path, monkeypatch) -> None:
-    from backend.video_generation import config
+def test_gen_tts_uses_default_voice_id_when_missing(tmp_path: Path) -> None:
+    from backend.video_generation.config import config as cfg
 
     wav = _make_wav_bytes(duration_s=1.0)
     client = _FakeClient(wav)
@@ -79,7 +79,7 @@ def test_gen_tts_uses_default_voice_id_when_missing(tmp_path: Path, monkeypatch)
         out=out,
         client_factory=lambda: client,
     )
-    assert client.calls[0]["setup"]["voice_id"] == config.DEFAULT_VOICE_ID
+    assert client.calls[0]["setup"]["voice_id"] == cfg.voice_id
 
 
 def test_gen_tts_cli_prints_json(tmp_path: Path, monkeypatch) -> None:

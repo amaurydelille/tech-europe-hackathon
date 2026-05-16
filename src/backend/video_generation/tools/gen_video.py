@@ -7,7 +7,7 @@ import urllib.request
 from pathlib import Path
 from typing import Protocol
 
-from ..config import SEEDANCE_MODEL_ID, fal_api_key
+from ..config import config, fal_api_key
 from ..ffmpeg_utils import probe_duration, sample_frames_1fps
 
 ALLOWED_DURATIONS = {5, 10}
@@ -78,7 +78,7 @@ def gen_video(
     if seed is not None:
         arguments["seed"] = seed
 
-    result = fal_impl.subscribe(SEEDANCE_MODEL_ID, arguments)
+    result = fal_impl.subscribe(config.models.seedance, arguments)
     if not isinstance(result, dict):
         raise RuntimeError(f"unexpected fal result type: {type(result)}")
     video = result.get("video")
@@ -95,7 +95,7 @@ def gen_video(
         "path": str(out),
         "duration": actual_duration,
         "frame_paths": [str(p) for p in frame_paths],
-        "model": SEEDANCE_MODEL_ID,
+        "model": config.models.seedance,
         "seed": result.get("seed"),
     }
 

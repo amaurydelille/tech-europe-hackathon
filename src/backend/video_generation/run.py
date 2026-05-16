@@ -7,12 +7,11 @@ import subprocess
 import sys
 from pathlib import Path
 
-from .config import REPO_ROOT
+from .config import REPO_ROOT, config
 from .workspace import Workspace, create_workspace
 
 INSTRUCTIONS_PATH = Path(__file__).parent / "instructions.md"
 DEFAULT_CODEX_MODEL: str | None = None  # let codex use its config default
-DEFAULT_TARGET_DURATION_SECONDS = 60
 
 
 def _render_instructions(target_duration_seconds: int) -> str:
@@ -63,7 +62,7 @@ def generate_video(
     lesson_md: str,
     out_path: Path | None = None,
     *,
-    target_duration_seconds: int = DEFAULT_TARGET_DURATION_SECONDS,
+    target_duration_seconds: int = config.target_duration_seconds,
     model: str | None = DEFAULT_CODEX_MODEL,
     extra_env: dict | None = None,
 ) -> Path:
@@ -140,7 +139,7 @@ def _main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--duration",
         type=int,
-        default=DEFAULT_TARGET_DURATION_SECONDS,
+        default=config.target_duration_seconds,
         help="Target total video length in seconds.",
     )
     args = parser.parse_args(argv)

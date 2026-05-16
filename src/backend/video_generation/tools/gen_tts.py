@@ -10,7 +10,7 @@ import wave
 from pathlib import Path
 from typing import Callable
 
-from ..config import DEFAULT_VOICE_ID, gradium_api_key
+from ..config import config, gradium_api_key
 
 
 def _default_client_factory():
@@ -56,7 +56,7 @@ def gen_tts(
         raise ValueError("text is empty")
     out = Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
-    voice_id = voice_id or DEFAULT_VOICE_ID
+    voice_id = voice_id or config.voice_id
     factory = client_factory or _default_client_factory
     client = factory()
     result = asyncio.run(_synthesize(text, voice_id, client))

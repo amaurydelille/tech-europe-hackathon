@@ -7,11 +7,7 @@ import urllib.request
 from pathlib import Path
 from typing import Protocol
 
-from ..config import (
-    SEEDREAM_EDIT_MODEL_ID,
-    SEEDREAM_TEXT_TO_IMAGE_MODEL_ID,
-    fal_api_key,
-)
+from ..config import config, fal_api_key
 
 
 class FalLike(Protocol):
@@ -55,14 +51,14 @@ def gen_image(
 
     if refs:
         image_urls = [fal_impl.upload_file(r) for r in refs]
-        model = SEEDREAM_EDIT_MODEL_ID
+        model = config.models.seedream_edit
         arguments = {
             "prompt": prompt,
             "image_urls": image_urls,
             "aspect_ratio": aspect,
         }
     else:
-        model = SEEDREAM_TEXT_TO_IMAGE_MODEL_ID
+        model = config.models.seedream_text_to_image
         arguments = {
             "prompt": prompt,
             "aspect_ratio": aspect,

@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 
 from dotenv import load_dotenv
+from pydantic import BaseModel
 
 load_dotenv()
 
@@ -13,16 +14,22 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 TMP_ROOT = REPO_ROOT / "tmp" / "video_generation"
 CONFIG_PATH = Path(__file__).parent / "config.json"
 
-_config = json.loads(CONFIG_PATH.read_text())
 
-DEFAULT_VOICE_ID: str = _config["voice_id"]
-DEFAULT_RESOLUTION: str = _config["resolution"]
-DEFAULT_ASPECT: str = _config["aspect"]
-DEFAULT_TARGET_DURATION_SECONDS: int = _config["target_duration_seconds"]
+class Models(BaseModel):
+    seedance: str
+    seedream_text_to_image: str
+    seedream_edit: str
 
-SEEDANCE_MODEL_ID: str = _config["models"]["seedance"]
-SEEDREAM_TEXT_TO_IMAGE_MODEL_ID: str = _config["models"]["seedream_text_to_image"]
-SEEDREAM_EDIT_MODEL_ID: str = _config["models"]["seedream_edit"]
+
+class Config(BaseModel):
+    voice_id: str
+    resolution: str
+    aspect: str
+    target_duration_seconds: int
+    models: Models
+
+
+config: Config = Config.model_validate(json.loads(CONFIG_PATH.read_text()))
 
 
 def gradium_api_key() -> str:
