@@ -23,7 +23,7 @@ _CONCURRENCY_BASE_DELAY_S = 1.5
 
 # Additional padding_bonus applied on top of config.tts_padding_bonus when
 # brainrot_mode is on. More negative => faster speech.
-BRAINROT_PADDING_DELTA = -0.5
+BRAINROT_PADDING_DELTA = -1.0
 
 
 def _default_client_factory():
