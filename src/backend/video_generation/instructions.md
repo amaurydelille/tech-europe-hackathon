@@ -116,8 +116,9 @@ Read the JSON output to learn the true `duration` and use it when placing the sp
 - **Animated stills** (`gen_image` + `animate_image`): generate a still, apply a slow zoom-in. Near-instant (ffmpeg only, no API call). 2–5 s per clip depending on the importance of the image. Best for establishing shots, portraits, maps, atmospheric scenes — anything where a still already conveys the moment.
 - **Real video** (`gen_video`): Seedance image-to-video, 5 or 10 s. 1–3 minutes per call. Use it for shots that need actual motion (water flowing, marching armies, gestures, cinema-worthy moments).
 - **Animated diagrams** (`gen_manim`): Manim-rendered scenes — equations being derived, vectors flowing through matmuls, graphs lighting up. Use this **only for math / CS / algorithm lessons** where a labeled animated diagram explains the idea better than imagery (e.g. softmax, attention, gradient descent, sorting). Read `src/backend/video_generation/manim_textbook.md` end-to-end before authoring your first Manim shot in a run.
+- **3D-globe map** (`gen_map`): slowly spinning Earth with countries highlighted in chosen colors, optional arrow between two lat/lon points (movement, access, trade route), optional city markers that light up at given times (sequential pings along a route), and optional country blink for mid-clip emphasis. Fast (~5–10 s). Use for any "where on Earth" beat — naming a region, showing a border or strait, tracing a route, locating an event. Pick `--lon`/`--lat`/`--zoom` to frame the relevant region. **Make sure to reach for this whenever the lesson has geographic stakes.** If the lesson names places, the video should show them on a map. For Strait of Hormuz videos specifically, use `gen_map` at least once.
 
-The proportion between the first two is set by the time budget below — follow it. Manim shots are extra (usually 1–3 per math/CS run, otherwise zero).
+The proportion between the first two is set by the time budget below — follow it. Manim and map shots are extra (use them when the lesson calls for them).
 
 **Minimum real video.** Every run must include a certain amount (check the proportion written below) of `gen_video` clips, and each one must earn the cost — pick a moment with motion that an animated still can't fake (like very cinema-worthy moments, or gestures, etc), and prompt for that motion explicitly. If the clip could be replaced by an `animate_image` without anyone noticing, it's the wrong shot.
 
@@ -279,11 +280,16 @@ Every visual prompt — for both anchors and per-shot generations — should exp
 - **Lighting**: e.g. "golden-hour rim light", "overcast diffuse light", "torchlit interior"
 - **Style**: keep this clause identical across all visuals in this run
 
-Recommended unifying style clause:
+Pick **one** style clause that fits the lesson's tone and reuse it verbatim in every visual prompt of the run. Styles to choose from:
 
-> "Cinematic painterly illustration, historically accurate, dramatic chiaroscuro lighting, warm earthy palette, 35mm film grain, no text, no on-screen captions."
+- **Historical topics** (battles, ancient/medieval/early-modern eras, biographies of pre-1900 figures): "Cinematic painterly illustration, historically accurate, dramatic chiaroscuro lighting, warm earthy palette, 35mm film grain, no text, no on-screen captions."
+- **Modern news / geopolitics / current events** (post-1940 conflicts, diplomacy, ongoing crises): "Modern editorial photojournalism, natural lighting, muted realistic color grade, shallow depth of field, no text, no captions."
+- **Science / math / technical concepts** (algorithms, physics, biology, engineering): "Crisp infographic illustration, clean flat color, soft studio lighting, geometric clarity, no text overlays."
+- **Tech / business / product** (companies, products, software, AI labs): "Sleek modern editorial render, clean studio lighting, cool neutral palette, sharp focus, minimalist composition, no text."
+- **Nature / earth science** (ecosystems, geology, weather, oceans): "Documentary nature cinematography, golden-hour natural light, rich saturated color, wide depth of field, no text."
+- **Storytelling for children** (fables, simplified history or science for kids, whimsical narratives): "Modern 3D animated family film, soft rounded character designs, warm cheerful lighting, vibrant friendly palette, expressive faces, shallow depth of field, no text, no captions."
 
-Adapt this to the lesson's tone (e.g. for a scientific lesson: "Crisp infographic illustration, flat color, soft studio lighting, no text overlays.").
+If none fits, write your own clause — keep it tight (≤ 20 words), concrete on lighting + medium + palette, and end with "no text, no captions."
 
 ## What "unity of script" means in practice
 
