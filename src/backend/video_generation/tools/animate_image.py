@@ -63,21 +63,53 @@ def _render_title_overlay(
     zeros = np.zeros_like(alpha)
     overlay = Image.fromarray(np.dstack([zeros, zeros, zeros, alpha]), mode="RGBA")
 
-    # Wrap title to ~80% of the canvas width.
+    # Wrap title to ~80% of the canvas width, with balanced line lengths.
     font = ImageFont.truetype(str(FONT_PATH), size=fontsize)
     measure = ImageDraw.Draw(overlay)
     max_width = int(width * 0.8)
+
+    def _word_w(s: str) -> int:
+        b = measure.textbbox((0, 0), s, font=font)
+        return b[2] - b[0]
+
+    def _greedy_partition(word_widths: list[int], space_w: int, limit: int) -> list[list[int]]:
+        groups: list[list[int]] = []
+        cur: list[int] = []
+        cur_w = 0
+        for idx, ww in enumerate(word_widths):
+            cand = cur_w + (space_w if cur else 0) + ww
+            if cand > limit and cur:
+                groups.append(cur)
+                cur = [idx]
+                cur_w = ww
+            else:
+                cur.append(idx)
+                cur_w = cand
+        if cur:
+            groups.append(cur)
+        return groups
+
     lines: list[str] = []
     for paragraph in title.split("\n"):
-        current = ""
-        for word in paragraph.split():
-            cand = f"{current} {word}".strip()
-            if measure.textbbox((0, 0), cand, font=font)[2] > max_width and current:
-                lines.append(current)
-                current = word
+        words = paragraph.split()
+        if not words:
+            lines.append("")
+            continue
+        widths = [_word_w(w) for w in words]
+        space_w = _word_w("a b") - _word_w("a") - _word_w("b")
+        # Min line count = greedy at the hard cap.
+        target_lines = len(_greedy_partition(widths, space_w, max_width))
+        # Binary-search the smallest cap that still fits in target_lines.
+        lo = max(widths)
+        hi = max_width
+        while lo < hi:
+            mid = (lo + hi) // 2
+            if len(_greedy_partition(widths, space_w, mid)) <= target_lines:
+                hi = mid
             else:
-                current = cand
-        lines.append(current)
+                lo = mid + 1
+        for group in _greedy_partition(widths, space_w, lo):
+            lines.append(" ".join(words[i] for i in group))
 
     # Layout: center the block vertically.
     line_spacing = fontsize // 4
