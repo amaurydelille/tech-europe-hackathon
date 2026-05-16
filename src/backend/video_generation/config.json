@@ -27,8 +27,8 @@
   ],
   "resolution": "480p",
   "aspect": "9:16",
-  "target_duration_seconds": 30,
-  "real_video_time_share": 0.5,
+  "target_duration_seconds": 40,
+  "real_video_time_share": 0.4,
   "tts_speed": 1.1,
   "brainrot_speed": 1.5,
   "models": {
