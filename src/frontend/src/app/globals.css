@@ -1,0 +1,45 @@
+@import "tailwindcss";
+
+/* ── Design tokens ── */
+:root {
+  --bg: #F6F3ED;
+  --bg-tint: #EFEBE1;
+  --surface: #FFFFFF;
+  --surface-2: #F2EDE3;
+  --text: #14110D;
+  --text-2: #6B655D;
+  --text-3: #A8A199;
+  --border: #E5DFD2;
+  --border-strong: #D4CCBC;
+
+  --gold: #B89968;
+  --gold-deep: #8E7340;
+  --gold-soft: #F0E9D8;
+
+  --shadow-sm: 0 1px 2px rgba(20,17,13,.04), 0 2px 6px rgba(20,17,13,.05);
+  --shadow-md: 0 2px 8px rgba(20,17,13,.06), 0 12px 28px rgba(20,17,13,.08);
+  --shadow-lg: 0 8px 24px rgba(20,17,13,.10), 0 30px 70px rgba(20,17,13,.14);
+
+  --r-sm: 12px;
+  --r-md: 20px;
+  --r-lg: 24px;
+  --r-pill: 999px;
+
+  --f-head: var(--font-fraunces), Georgia, serif;
+  --f-body: var(--font-inter), system-ui, sans-serif;
+}
+
+/* ── Keyframes ── */
+@keyframes tt-blob {
+  0%, 100% { transform: translate(0,0) rotate(0deg); }
+  33%       { transform: translate(6px,-8px) rotate(8deg); }
+  66%       { transform: translate(-8px,4px) rotate(-6deg); }
+}
+@keyframes tt-pulse {
+  0%, 100% { transform: scale(1); }
+  50%       { transform: scale(1.04); }
+}
+@keyframes tt-pulse-halo {
+  0%, 100% { transform: scale(1); opacity: .55; }
+  50%       { transform: scale(1.18); opacity: .20; }
+}
