@@ -24,10 +24,8 @@ from pathlib import Path
 from ..config import REPO_ROOT
 from ..ffmpeg_utils import probe_duration
 
-SUBWAY_PATH = (
-    REPO_ROOT / "src" / "backend" / "video_generation"
-    / "assets" / "video" / "subway_surfer.mp4"
-)
+SUBWAY_PATH = REPO_ROOT / "assets" / "video" / "subway_surfer.mp4"
+SOUNDTRACK_PATH = REPO_ROOT / "assets" / "audio" / "tung_tung_sahur.mp3"
 FPS = 30
 
 
@@ -72,6 +70,7 @@ def apply_brainrot(
     foreground_video: Path,
     out_path: Path,
     background_video: Path = SUBWAY_PATH,
+    soundtrack_volume: float = 1.0 / 3.0,
     top_ratio: float = 2.0 / 3.0,
     spin_duration: float = 0.6,
     spin_interval_mean: float = 3.0,
@@ -85,8 +84,12 @@ def apply_brainrot(
         raise FileNotFoundError(f"foreground video not found: {foreground_video}")
     if not background_video.is_file():
         raise FileNotFoundError(f"background video not found: {background_video}")
+    if not SOUNDTRACK_PATH.is_file():
+        raise FileNotFoundError(f"soundtrack not found: {SOUNDTRACK_PATH}")
     if not 0.3 <= top_ratio <= 0.9:
         raise ValueError("top_ratio must be in [0.3, 0.9]")
+    if not 0.0 <= soundtrack_volume <= 1.0:
+        raise ValueError("soundtrack_volume must be in [0.0, 1.0]")
 
     duration = probe_duration(foreground_video)
     width, height = _probe_dims(foreground_video)
@@ -106,7 +109,7 @@ def apply_brainrot(
     rot_side = int(((width ** 2 + top_h ** 2) ** 0.5) + 4)
     rot_side += rot_side % 2
 
-    filter_complex = (
+    video_filter = (
         # Solid black base at canvas dims.
         f"color=c=black:s={width}x{height}:r={FPS}[base];"
         # Lesson: cover-crop into (width, top_h), pad to rot_side square, rotate.
@@ -124,13 +127,21 @@ def apply_brainrot(
         f"[top][sub]overlay=0:{top_h}:format=auto[v]"
     )
 
+    audio_filter = (
+        f"[0:a]aresample=async=1[narr];"
+        f"[2:a]volume={soundtrack_volume:.3f},aresample=async=1[music];"
+        f"[narr][music]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[aout]"
+    )
+    filter_complex = video_filter + ";" + audio_filter
+
     cmd = [
         "ffmpeg", "-y", "-loglevel", "error",
         "-i", str(foreground_video),
         "-stream_loop", "-1", "-i", str(background_video),
+        "-stream_loop", "-1", "-i", str(SOUNDTRACK_PATH),
         "-filter_complex", filter_complex,
         "-map", "[v]",
-        "-map", "0:a?",
+        "-map", "[aout]",
         "-t", f"{duration:.3f}",
         "-c:v", "libx264", "-pix_fmt", "yuv420p", "-r", str(FPS),
         "-c:a", "aac",
@@ -152,6 +163,9 @@ def _main(argv: list[str] | None = None) -> int:
     parser.add_argument("--video", required=True, type=Path)
     parser.add_argument("--out", required=True, type=Path)
     parser.add_argument("--background", default=str(SUBWAY_PATH), type=Path)
+    parser.add_argument("--soundtrack-volume", dest="soundtrack_volume", type=float,
+                        default=1.0 / 3.0,
+                        help="Linear gain for the bundled brainrot soundtrack (default 0.333).")
     parser.add_argument("--top-ratio", dest="top_ratio", type=float, default=2.0 / 3.0,
                         help="Fraction of canvas height for the lesson; subway gets the rest.")
     parser.add_argument("--spin-duration", dest="spin_duration", type=float, default=0.6)
@@ -164,6 +178,7 @@ def _main(argv: list[str] | None = None) -> int:
         foreground_video=args.video,
         out_path=args.out,
         background_video=args.background,
+        soundtrack_volume=args.soundtrack_volume,
         top_ratio=args.top_ratio,
         spin_duration=args.spin_duration,
         spin_interval_mean=args.spin_mean,

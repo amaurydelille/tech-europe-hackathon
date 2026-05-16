@@ -14,9 +14,9 @@ def _make_video(path: Path, duration: float, w: int, h: int, color: str) -> None
     subprocess.run(
         [
             "ffmpeg", "-y", "-loglevel", "error",
-            "-f", "lavfi",
-            "-i", f"color=c={color}:s={w}x{h}:d={duration}",
-            "-r", "30", "-pix_fmt", "yuv420p",
+            "-f", "lavfi", "-i", f"color=c={color}:s={w}x{h}:d={duration}",
+            "-f", "lavfi", "-i", f"anullsrc=channel_layout=stereo:sample_rate=48000",
+            "-shortest", "-r", "30", "-pix_fmt", "yuv420p", "-c:a", "aac",
             str(path),
         ],
         check=True,

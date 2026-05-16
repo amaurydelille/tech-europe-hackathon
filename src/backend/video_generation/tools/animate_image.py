@@ -27,10 +27,7 @@ from ..ffmpeg_utils import probe_duration
 
 FPS = 30
 
-FONT_PATH = (
-    REPO_ROOT / "src" / "backend" / "video_generation"
-    / "assets" / "fonts" / "Fraunces-VF.ttf"
-)
+FONT_PATH = REPO_ROOT / "assets" / "fonts" / "Fraunces-VF.ttf"
 _HEX_RE = re.compile(r"^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$")
 
 
