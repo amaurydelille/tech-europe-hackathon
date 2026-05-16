@@ -32,26 +32,19 @@ def _probe_dims(path: Path) -> tuple[int, int]:
     return int(w), int(h)
 
 
-def test_animate_image_makes_mp4_with_canvas_aspect(tmp_path: Path) -> None:
+def test_animate_image_output_matches_input_dimensions(tmp_path: Path) -> None:
     img = tmp_path / "ref.png"
     _make_image(img, w=600, h=800)
     out = tmp_path / "anim.mp4"
 
-    result = animate_image.animate_image(
-        image=img,
-        out=out,
-        duration=3.0,
-        resolution="480p",
-        aspect="9:16",
-    )
+    result = animate_image.animate_image(image=img, out=out, duration=3.0)
 
     assert out.is_file()
     assert result["path"] == str(out)
     assert result["duration"] == pytest.approx(3.0, abs=0.3)
 
     w, h = _probe_dims(out)
-    assert h > w  # portrait
-    assert w == 480
+    assert (w, h) == (600, 800)
 
 
 def test_animate_image_rejects_invalid_zoom(tmp_path: Path) -> None:
@@ -67,14 +60,27 @@ def test_animate_image_rejects_invalid_zoom(tmp_path: Path) -> None:
         )
 
 
-def test_animate_image_landscape_canvas(tmp_path: Path) -> None:
+def test_animate_image_with_title_overlay(tmp_path: Path) -> None:
+    img = tmp_path / "ref.png"
+    _make_image(img, w=600, h=800)
+    out = tmp_path / "anim.mp4"
+
+    result = animate_image.animate_image(
+        image=img, out=out, duration=2.0,
+        title="Crossing the Rubicon",
+        title_color_hex="#F5E9C8",
+    )
+    assert out.is_file()
+    assert result["duration"] == pytest.approx(2.0, abs=0.3)
+    w, h = _probe_dims(out)
+    assert (w, h) == (600, 800)
+
+
+def test_animate_image_landscape_input_kept(tmp_path: Path) -> None:
     img = tmp_path / "ref.png"
     _make_image(img, w=800, h=600)
     out = tmp_path / "anim.mp4"
 
-    animate_image.animate_image(
-        image=img, out=out, duration=2.0, resolution="480p", aspect="16:9",
-    )
+    animate_image.animate_image(image=img, out=out, duration=2.0)
     w, h = _probe_dims(out)
-    assert w > h
-    assert h == 480
+    assert (w, h) == (800, 600)

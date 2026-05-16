@@ -92,9 +92,9 @@ def test_stitch_video_with_speech_overlay(tmp_path: Path) -> None:
     out_dir = tmp_path / "out"
     result = stitch.stitch(script_path=script_path, out_dir=out_dir)
 
-    out = out_dir / "final.mp4"
-    srt = out_dir / "final.srt"
-    sources = out_dir / "final_sources.json"
+    out = out_dir / "video.mp4"
+    srt = out_dir / "subtitles.srt"
+    sources = out_dir / "sources.json"
     assert out.is_file()
     assert srt.is_file()
     assert sources.is_file()
@@ -156,8 +156,8 @@ def test_stitch_writes_srt_with_grouped_cues(tmp_path: Path) -> None:
 
     out_dir = tmp_path / "out"
     result = stitch.stitch(script_path=script_path, out_dir=out_dir)
-    out = out_dir / "final.mp4"
-    srt = out_dir / "final.srt"
+    out = out_dir / "video.mp4"
+    srt = out_dir / "subtitles.srt"
 
     assert out.is_file()
     assert result["subtitle_cues"] >= 1

@@ -6,6 +6,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 from .config import REPO_ROOT, config
@@ -47,14 +48,23 @@ def _prepare_workspace(lesson_md: str) -> Workspace:
     return workspace
 
 
-def _build_prompt(workspace: Workspace, target_duration_seconds: int) -> str:
+def _build_prompt(
+    workspace: Workspace,
+    target_duration_seconds: int,
+    title: str | None = None,
+) -> str:
     instructions = _render_instructions(target_duration_seconds)
     tools_src = REPO_ROOT / "src" / "backend" / "video_generation" / "tools"
     lesson_path = workspace.inputs_dir / "lesson.md"
-    final_path = workspace.outputs_dir / "final.mp4"
-    final_srt_path = workspace.outputs_dir / "final.srt"
-    final_sources_path = workspace.outputs_dir / "final_sources.json"
+    final_path = workspace.outputs_dir / "video.mp4"
+    final_srt_path = workspace.outputs_dir / "subtitles.srt"
+    final_sources_path = workspace.outputs_dir / "sources.json"
     venv_python = REPO_ROOT / ".venv" / "bin" / "python"
+    title_line = (
+        f"- Lesson title (use this verbatim for `title_sequence --title`): {title!r}\n"
+        if title
+        else ""
+    )
     return (
         f"{instructions}\n\n"
         f"## This run\n\n"
@@ -69,8 +79,9 @@ def _build_prompt(workspace: Workspace, target_duration_seconds: int) -> str:
         f"- Tool source: `{tools_src}` — note the `src/` prefix; do NOT look under "
         f"`{REPO_ROOT}/backend/...`.\n\n"
         f"### Run parameters\n\n"
-        f"- Target total duration: ~{target_duration_seconds} seconds.\n\n"
-        f"### Running tools\n\n"
+        f"- Target total duration: ~{target_duration_seconds} seconds.\n"
+        f"{title_line}"
+        f"\n### Running tools\n\n"
         f"Invoke each tool with the project's venv python directly: "
         f"`{venv_python} -m backend.video_generation.tools.<name> ...`. "
         f"Do **not** use `uv run` — parallel `uv run` calls serialize on a shared project lock. "
@@ -105,6 +116,7 @@ def generate_video(
     lesson_md: str,
     out_dir: Path | None = None,
     *,
+    title: str | None = None,
     target_duration_seconds: int = config.target_duration_seconds,
     model: str | None = DEFAULT_CODEX_MODEL,
     extra_env: dict | None = None,
@@ -113,7 +125,7 @@ def generate_video(
 
     Args:
         lesson_md: Lesson content as a markdown string.
-        out_dir: Where to copy the finished `final.mp4` + `final.srt`. The
+        out_dir: Where to copy the finished `video.mp4` + `subtitles.srt` + `sources.json`. The
             directory is created if missing. If None, leave them under the
             workspace.
         target_duration_seconds: Target length of the finished video in seconds.
@@ -121,7 +133,7 @@ def generate_video(
         extra_env: Extra env vars to pass to codex.
 
     Returns:
-        Path to the directory containing `final.mp4` and `final.srt`.
+        Path to the directory containing `video.mp4`, `subtitles.srt`, and `sources.json`.
     """
     if shutil.which("codex") is None:
         raise RuntimeError("`codex` CLI not found on PATH")
@@ -129,7 +141,7 @@ def generate_video(
         raise RuntimeError("`ffmpeg` not found on PATH")
 
     workspace = _prepare_workspace(lesson_md)
-    prompt = _build_prompt(workspace, target_duration_seconds)
+    prompt = _build_prompt(workspace, target_duration_seconds, title=title)
 
     env = os.environ.copy()
     if extra_env:
@@ -145,9 +157,9 @@ def generate_video(
     if proc.returncode != 0:
         raise RuntimeError(f"codex exec failed with code {proc.returncode}")
 
-    produced = workspace.outputs_dir / "final.mp4"
-    produced_srt = workspace.outputs_dir / "final.srt"
-    produced_sources = workspace.outputs_dir / "final_sources.json"
+    produced = workspace.outputs_dir / "video.mp4"
+    produced_srt = workspace.outputs_dir / "subtitles.srt"
+    produced_sources = workspace.outputs_dir / "sources.json"
     for path, label in (
         (produced, "video"),
         (produced_srt, "subtitles"),
@@ -162,24 +174,25 @@ def generate_video(
     if out_dir is not None:
         out_dir = Path(out_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(produced, out_dir / "final.mp4")
-        shutil.copy2(produced_srt, out_dir / "final.srt")
-        shutil.copy2(produced_sources, out_dir / "final_sources.json")
+        shutil.copy2(produced, out_dir / "video.mp4")
+        shutil.copy2(produced_srt, out_dir / "subtitles.srt")
+        shutil.copy2(produced_sources, out_dir / "sources.json")
         return out_dir
     return workspace.outputs_dir
 
 
-def load_lesson(path: Path) -> str:
-    """Load a lesson markdown from either a `.md`/`.txt` file or a `.json`
-    payload of the shape `{"full_markdown": "...", "references": [{"title", "url"}]}`.
+def load_lesson(path: Path) -> tuple[str, str | None]:
+    """Load a lesson from either a `.md`/`.txt` file or a `.json` payload.
 
-    For JSON input, the references are appended as a `## Sources` markdown
-    section so the agent can attach them as source citations to the
-    relevant speech entries.
+    Returns ``(lesson_markdown, title_or_None)``. For JSON input, the schema
+    expected is ``{"title": "...", "full_markdown": "...", "references": [{"title", "url"}, ...]}``;
+    ``title`` and ``references`` are optional. References get appended as a
+    ``## Sources`` markdown section so the agent can attach them as source
+    citations to the relevant speech entries.
     """
     text = path.read_text()
     if path.suffix.lower() != ".json":
-        return text
+        return text, None
     data = json.loads(text)
     if not isinstance(data, dict) or "full_markdown" not in data:
         raise ValueError(
@@ -195,7 +208,10 @@ def load_lesson(path: Path) -> str:
             if not url:
                 continue
             lesson += f"- [{title}]({url})\n"
-    return lesson
+    json_title = data.get("title")
+    if json_title is not None and not isinstance(json_title, str):
+        raise ValueError(f"{path}: 'title' must be a string when present")
+    return lesson, (json_title or None)
 
 
 def _main(argv: list[str] | None = None) -> int:
@@ -213,7 +229,7 @@ def _main(argv: list[str] | None = None) -> int:
         "--out-dir",
         type=Path,
         default=None,
-        help="Optional destination directory. Will contain final.mp4 + final.srt.",
+        help="Optional destination directory. Will contain video.mp4 + subtitles.srt + sources.json.",
     )
     parser.add_argument(
         "--model",
@@ -233,13 +249,19 @@ def _main(argv: list[str] | None = None) -> int:
         print(f"lesson file not found: {args.lesson}", file=sys.stderr)
         return 1
 
+    lesson_md, lesson_title = load_lesson(args.lesson)
+    started = time.monotonic()
     final_dir = generate_video(
-        lesson_md=load_lesson(args.lesson),
+        lesson_md=lesson_md,
         out_dir=args.out_dir,
+        title=lesson_title,
         target_duration_seconds=args.duration,
         model=args.model,
     )
+    elapsed = time.monotonic() - started
     print(str(final_dir))
+    minutes, seconds = divmod(elapsed, 60)
+    print(f"Total time: {int(minutes)}m {seconds:.1f}s", file=sys.stderr)
     return 0
 
 

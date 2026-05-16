@@ -64,9 +64,9 @@ def stitch(script_path: Path, out_dir: Path) -> dict:
     script_dir = script_path.parent
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = out_dir / "final.mp4"
-    srt_path = out_dir / "final.srt"
-    sources_path = out_dir / "final_sources.json"
+    out_path = out_dir / "video.mp4"
+    srt_path = out_dir / "subtitles.srt"
+    sources_path = out_dir / "sources.json"
 
     width, height = _canvas_dimensions(script.resolution, script.aspect)
 
@@ -153,14 +153,14 @@ def stitch(script_path: Path, out_dir: Path) -> dict:
 
 def _main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Stitch script assets into final.mp4 + final.srt + final_sources.json."
+        description="Stitch script assets into video.mp4 + subtitles.srt + sources.json."
     )
     parser.add_argument("--script", required=True, type=Path)
     parser.add_argument(
         "--out-dir",
         required=True,
         type=Path,
-        help="Directory to write final.mp4, final.srt, final_sources.json into.",
+        help="Directory to write video.mp4, subtitles.srt, sources.json into.",
     )
     args = parser.parse_args(argv)
 
