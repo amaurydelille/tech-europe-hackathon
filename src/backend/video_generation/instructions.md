@@ -77,7 +77,7 @@ uv run python -m backend.video_generation.tools.gen_tts \
     --out assets/audio/sNNN.wav
 ```
 
-Read the JSON output to learn the true `duration` and use it when placing the speech in `script.json`.
+Read the JSON output to learn the true `duration` and use it when placing the speech in `script.json`. The output also includes a `timestamps` array — segment timings produced by Gradium (typically word- or phrase-level), each item shaped `{"text": ..., "start": ..., "end": ...}` with times in seconds **relative to the start of this speech audio**. **Copy that array verbatim into the matching speech entry's `timestamps` field** in `script.json`. The stitcher uses these to render burned-in subtitles on the final video.
 
 ### Step 6 — Generate visuals (anchored)
 
@@ -162,7 +162,10 @@ Build the final script with this exact shape:
       "start": <float>,
       "duration": <float from tool output>,
       "text": "<exact text passed to gen_tts>",
-      "audio_path": "assets/audio/sNNN.wav"
+      "audio_path": "assets/audio/sNNN.wav",
+      "timestamps": [
+        {"text": "<segment text>", "start": <float, relative to audio>, "end": <float, relative to audio>}
+      ]
     },
     {
       "kind": "video",
@@ -214,8 +217,8 @@ The table below is the complete contract for every tool. **Do not read the tool 
 | `gen_image` | Generate a still (anchor or scene). Uses Seedream 4 (text-to-image when no `--ref`; edit when refs supplied). | `--prompt`, `--out`; optional `--ref` (repeatable), `--aspect` | `{path, width, height, model, seed}` |
 | `gen_video` | Generate a **silent** 5s or 10s clip from a reference image. Uses Seedance 2 image-to-video with audio generation disabled. Slow (1–3 min/call). Samples 2 fps frames for inspection. | `--prompt`, `--image`, `--duration` (5 or 10), `--out`; optional `--resolution` (480p/720p/1080p), `--aspect`, `--seed` | `{path, duration, frame_paths, model, seed}` |
 | `animate_image` | Turn a still into a short clip with a slow Ken-Burns-style zoom. Pure ffmpeg, ~1 second per call. **Prefer this over `gen_video` whenever you don't need true motion.** | `--image`, `--duration`, `--out`; optional `--zoom-from`, `--zoom-to`, `--resolution`, `--aspect` | `{path, duration}` |
-| `gen_tts` | Synthesize one narration line via Gradium TTS. | `--text`, `--out`; optional `--voice-id` | `{path, duration, sample_rate}` |
-| `stitch` | Validate the script and mux all assets into the final MP4 with audio mix. | `--script`, `--out` | `{path, duration}` |
+| `gen_tts` | Synthesize one narration line via Gradium TTS. Also returns segment-level timestamps for subtitle rendering. | `--text`, `--out`; optional `--voice-id` | `{path, duration, sample_rate, timestamps: [{text, start, end}, ...]}` |
+| `stitch` | Validate the script and mux all assets into the final MP4 with audio mix, burning subtitles from each speech entry's `timestamps`. | `--script`, `--out` | `{path, duration, subtitle_cues}` |
 
 All tools print a single JSON line to stdout; non-zero exit means failure (error on stderr).
 
