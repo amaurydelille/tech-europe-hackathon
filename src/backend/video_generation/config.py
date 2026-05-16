@@ -40,7 +40,7 @@ def gradium_api_key() -> str:
 
 
 def fal_api_key() -> str:
-    key = os.environ.get("FAL_KEY") or os.environ.get("FAL_API_KEY")
+    key = os.environ.get("FAL_KEY")
     if not key:
-        raise RuntimeError("FAL_KEY (or FAL_API_KEY) is not set in the environment")
+        raise RuntimeError("FAL_KEY is not set in the environment")
     return key

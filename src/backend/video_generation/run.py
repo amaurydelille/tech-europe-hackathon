@@ -32,6 +32,7 @@ def _build_prompt(workspace: Workspace, target_duration_seconds: int) -> str:
     tools_src = REPO_ROOT / "src" / "backend" / "video_generation" / "tools"
     lesson_path = workspace.inputs_dir / "lesson.md"
     final_path = workspace.outputs_dir / "final.mp4"
+    venv_python = REPO_ROOT / ".venv" / "bin" / "python"
     return (
         f"{instructions}\n\n"
         f"## This run\n\n"
@@ -46,9 +47,11 @@ def _build_prompt(workspace: Workspace, target_duration_seconds: int) -> str:
         f"- Repository root: `{REPO_ROOT}`.\n"
         f"- Tool source code lives at `{tools_src}` (note the `src/` prefix). "
         f"Do NOT look under `{REPO_ROOT}/backend/...` — it does not exist.\n"
-        f"- Invoke tools as Python modules with absolute `--out` paths: "
-        f"`uv run --project {REPO_ROOT} python -m backend.video_generation.tools.<name> ...` "
-        f"(the `src/` layout is configured in pyproject so the dotted path starts with `backend.`).\n"
+        f"- Invoke tools by calling the project's venv python **directly**: "
+        f"`{venv_python} -m backend.video_generation.tools.<name> ...`. "
+        f"Do NOT use `uv run` — multiple `uv run` calls in parallel serialize on a "
+        f"shared project lock. The venv at `{venv_python.parent.parent}` already has every "
+        f"dependency installed.\n"
         f"- When done, print `{final_path}` and stop.\n"
     )
 
@@ -59,6 +62,7 @@ def _codex_command(workspace: Workspace, model: str | None) -> list[str]:
         "exec",
         "--skip-git-repo-check",
         "--full-auto",
+        "-c", "sandbox_workspace_write.network_access=true",
         "--cd", str(workspace.root),
         "--add-dir", str(REPO_ROOT),
         "-o", str(workspace.root / "codex.last_message.txt"),
