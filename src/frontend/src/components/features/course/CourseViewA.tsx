@@ -109,14 +109,24 @@ function VideoBlock({ courseId, isPlaying, progress, onTogglePlay, onSeek }: Vid
     const v = videoRef.current;
     if (!v) return;
     if (isPlaying) {
-      // Unmute on first explicit play interaction
       if (hasInteractedRef.current) v.muted = false;
       v.play().catch(() => {});
     } else {
-      hasInteractedRef.current = true;
       v.pause();
     }
   }, [isPlaying]);
+
+  // First tap unlocks audio; later taps toggle play/pause.
+  const handleTap = useCallback(() => {
+    const v = videoRef.current;
+    if (v && v.muted && !hasInteractedRef.current) {
+      hasInteractedRef.current = true;
+      v.muted = false;
+      if (!isPlaying) onTogglePlay();
+      return;
+    }
+    onTogglePlay();
+  }, [isPlaying, onTogglePlay]);
 
   // Feed real video time back as progress + update subtitle (rAF-coalesced)
   const handleTimeUpdate = useCallback(() => {
@@ -197,7 +207,7 @@ function VideoBlock({ courseId, isPlaying, progress, onTogglePlay, onSeek }: Vid
       {/* play / pause overlay */}
       <button
         aria-label={isPlaying ? "Pause" : "Play"}
-        onClick={onTogglePlay}
+        onClick={handleTap}
         style={{
           position: "absolute",
           left: "50%",
@@ -236,7 +246,7 @@ function VideoBlock({ courseId, isPlaying, progress, onTogglePlay, onSeek }: Vid
 
       {/* tap anywhere to toggle (invisible full overlay) */}
       <div
-        onClick={onTogglePlay}
+        onClick={handleTap}
         style={{ position: "absolute", inset: 0, cursor: "pointer" }}
       />
 
