@@ -78,7 +78,7 @@ uv run python -m backend.video_generation.tools.gen_tts \
     --out assets/audio/sNNN.wav
 ```
 
-Read the JSON output to learn the true `duration` and use it when placing the speech in `script.json`. The output also includes a `timestamps` array — segment timings produced by Gradium (typically word- or phrase-level), each item shaped `{"text": ..., "start": ..., "end": ...}` with times in seconds **relative to the start of this speech audio**. **Copy that array verbatim into the matching speech entry's `timestamps` field** in `script.json`. The stitcher uses these to render burned-in subtitles on the final video.
+Read the JSON output to learn the true `duration` and use it when placing the speech in `script.json`. The output also includes a `timestamps` array — segment timings produced by Gradium (typically word- or phrase-level), each item shaped `{"text": ..., "start": ..., "end": ...}` with times in seconds **relative to the start of this speech audio**. **You MUST copy that array verbatim into the matching speech entry's `timestamps` field** in `script.json`. The stitcher requires this field on every speech entry and will reject the script if it is missing or empty — there is no fallback. The timestamps drive the burned-in subtitles on the final video.
 
 ### Step 6 — Generate visuals (anchored)
 
@@ -87,6 +87,8 @@ Read the JSON output to learn the true `duration` and use it when placing the sp
 **Default to animated stills, not Seedance video.** Seedance generation takes 1–3 minutes per clip; `animate_image` is near-instant (ffmpeg only, no API call). Reserve real Seedance video for shots where you genuinely need motion the still cannot fake (water flowing, marching armies, gestures). For everything else — establishing shots, portraits, maps, atmospheric scenes — generate an intermediate still and use `animate_image` on it (2–5 s depending on the importance of the image).
 
 **Time budget for Seedance.** The total wall-time of your `gen_video` clips should be **~{{SEEDANCE_PERCENT}}% of the target video duration** (about **{{SEEDANCE_SECONDS}} seconds** of Seedance footage in this run). Spend that budget on the shots where motion most carries the narrative; cover everything else with `animate_image`. Going over the budget is fine only if a shot genuinely cannot be staged any other way.
+
+**Minimum Seedance use.** Every run must include **at least one real `gen_video` clip — ideally one or two**. Animated stills alone make the final video feel flat; one well-chosen Seedance shot (the most kinetic moment of the lesson) gives it life. Do not skip this even if the budget is tight.
 
 **Keep individual clips short.** 5 seconds is enough for almost every beat — if you want a longer shot, prefer **two 5-second clips with different framings** (wide → close-up, or alternate angles) rather than one 10-second take. This is faster to generate and reads better cinematically.
 
@@ -166,7 +168,7 @@ Build the final script with this exact shape:
       "audio_path": "assets/audio/sNNN.wav",
       "timestamps": [
         {"text": "<segment text>", "start": <float, relative to audio>, "end": <float, relative to audio>}
-      ]
+      ]   // required, non-empty — copy verbatim from gen_tts JSON output
     },
     {
       "kind": "video",
