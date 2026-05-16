@@ -1,3 +1,9 @@
+# Tutor AI
+
+> The most tailored tutor ever, powered by AI
+
+An App where you discuss about things you want to learn, which then generates you a full working video class to watch.
+
 
 ## Backend: Python
 
