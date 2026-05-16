@@ -164,16 +164,20 @@ This tool validates the script internally and refuses to run on an invalid one. 
 
 Print the absolute path to `outputs/final.mp4` and stop.
 
-## Tool reference (quick recap)
+## Tool reference (authoritative)
+
+The table below is the complete contract for every tool. **Do not read the tool source code** (`gen_image.py`, `gen_video.py`, `gen_tts.py`, `stitch.py`) — these flags are everything you need. Only inspect the source if a tool call fails with an error you don't understand.
 
 | Tool | Purpose | Required args | Output JSON |
 |---|---|---|---|
 | `gen_image` | Generate a still (anchor or scene). Uses Seedream 4 (text-to-image when no `--ref`; edit when refs supplied). | `--prompt`, `--out`; optional `--ref` (repeatable), `--aspect` | `{path, width, height, model, seed}` |
-| `gen_video` | Generate a 5s or 10s clip from a reference image. Uses Seedance 2 image-to-video. Also samples 1 fps frames you can inspect. | `--prompt`, `--image`, `--duration`, `--out`; optional `--resolution`, `--aspect`, `--seed` | `{path, duration, frame_paths, model, seed}` |
+| `gen_video` | Generate a 5s or 10s clip from a reference image. Uses Seedance 2 image-to-video. Also samples 1 fps frames you can inspect. | `--prompt`, `--image`, `--duration` (5 or 10), `--out`; optional `--resolution` (480p/720p/1080p), `--aspect`, `--seed` | `{path, duration, frame_paths, model, seed}` |
 | `gen_tts` | Synthesize one narration line via Gradium TTS. | `--text`, `--out`; optional `--voice-id` | `{path, duration, sample_rate}` |
-| `stitch` | Mux validated script into MP4 with audio mix. | `--script`, `--out` | `{path, duration}` |
+| `stitch` | Validate the script and mux all assets into the final MP4 with audio mix. | `--script`, `--out` | `{path, duration}` |
 
 All tools print a single JSON line to stdout; non-zero exit means failure (error on stderr).
+
+The `script.json` schema is fully specified in Step 7 below — that is the only schema you need.
 
 ## Style guidance for visual prompts
 
