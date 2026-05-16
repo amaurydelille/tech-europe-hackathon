@@ -30,20 +30,26 @@ def _prepare_workspace(lesson_md: str) -> Workspace:
 def _build_prompt(workspace: Workspace, target_duration_seconds: int) -> str:
     instructions = _render_instructions(target_duration_seconds)
     tools_src = REPO_ROOT / "src" / "backend" / "video_generation" / "tools"
+    lesson_path = workspace.inputs_dir / "lesson.md"
+    final_path = workspace.outputs_dir / "final.mp4"
     return (
         f"{instructions}\n\n"
         f"## This run\n\n"
-        f"- Working directory: `{workspace.root}` (you are already cd'd into it).\n"
-        f"- Lesson file: `inputs/lesson.md`.\n"
-        f"- Final output: `outputs/final.mp4`.\n"
+        f"All paths below are absolute. Use them as-is in every tool call — "
+        f"do not assume a particular working directory.\n\n"
+        f"- Workspace root: `{workspace.root}`\n"
+        f"- Lesson file: `{lesson_path}`\n"
+        f"- Final output: `{final_path}`\n"
+        f"- Assets directory (refs/audio/video/image and `script.json` go here): "
+        f"`{workspace.assets_dir}`\n"
         f"- Target total duration: ~{target_duration_seconds} seconds.\n"
         f"- Repository root: `{REPO_ROOT}`.\n"
         f"- Tool source code lives at `{tools_src}` (note the `src/` prefix). "
         f"Do NOT look under `{REPO_ROOT}/backend/...` — it does not exist.\n"
-        f"- Invoke tools as Python modules: "
+        f"- Invoke tools as Python modules with absolute `--out` paths: "
         f"`uv run --project {REPO_ROOT} python -m backend.video_generation.tools.<name> ...` "
         f"(the `src/` layout is configured in pyproject so the dotted path starts with `backend.`).\n"
-        f"- When done, print the absolute path of `outputs/final.mp4` and stop.\n"
+        f"- When done, print `{final_path}` and stop.\n"
     )
 
 
