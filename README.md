@@ -1,4 +1,4 @@
-# Kheiron — the most tailored tutor ever
+# Kheiron: the most tailored tutor ever
 
 > Speak to an AI tutor, get a personalized video lesson.
 
@@ -10,7 +10,7 @@ Three pipelines power the experience:
 2. **Course generation** — LLM-built search query → Tavily web search → GLiNER2 entity-density filter → GPT-5.5 narrative + condensed scripts with inline citations.
 3. **Video generation** — a Codex-driven director agent writes a timestamped script, generates anchor images (Seedream), animates them or shoots real motion (Seedance), narrates with Gradium TTS, and stitches the final MP4 + SRT with ffmpeg.
 
-https://github.com/user-attachments/assets/2512331b-4fa4-4fb8-bf2a-16049167ac46
+https://github.com/user-attachments/assets/cb8451b1-060e-407b-ae01-37639711131d
 
 ---
 
